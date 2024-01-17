@@ -1,6 +1,9 @@
 ﻿using BackendSystem.Models;
+using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Data;
+using System.Data.Common;
 using System.IO;
 
 namespace BackendSystem.Controllers
@@ -11,8 +14,9 @@ namespace BackendSystem.Controllers
     {
         private readonly string _folder;
         private readonly long _fileSizeLimit;
+        private readonly IDbConnection _dbConnection;
 
-        public UploadPictureAPIController(IConfiguration config)
+        public UploadPictureAPIController(IConfiguration config,IDbConnection dbConnection)
         {
             _fileSizeLimit = config.GetValue<long>("FileSizeLimit");
             var date = DateTime.Now.ToString("yyyyMMdd");
@@ -21,11 +25,16 @@ namespace BackendSystem.Controllers
             {
                 Directory.CreateDirectory(_folder);
             }
+            _dbConnection = dbConnection;
         }
         [HttpPost]
-        public async Task<IActionResult> UploadData([FromForm]ProductImage files)
+        public async Task<IActionResult> UploadData([FromForm]UploadData files)
         {
-            
+
+            var ImageMappingProductId = files.ProductID;
+            var ImageName = files.Name;
+            var ImgDescription =files.ImgDescription;
+
             if (files.Path.Count > 0)
             {
                 foreach (var file in files.Path)
@@ -41,6 +50,19 @@ namespace BackendSystem.Controllers
                         {
                             await file.CopyToAsync(stream);
                         }
+                        var param = new ProductImage
+                        {
+                            ProductID = ImageMappingProductId,
+                            Name = ImageName,
+                            Path = filePath,
+                            ImgDescription = ImgDescription
+                        };
+
+                        string str = @"INSERT INTO ProductImage (ProductId, Name, Path, ImgDescription) VALUES (@ProductId, @Name, @Path, @ImgDescription);";
+
+                        // 使用 Dapper 執行 SQL 指令
+                        _dbConnection.Execute(str, param);
+
                     }
                     else {
                         return BadRequest();
