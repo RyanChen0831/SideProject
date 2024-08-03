@@ -1,61 +1,96 @@
 ﻿using BackendSystem.Models;
+using BackendSystem.Service.Dtos;
+using BackendSystem.Service.Interface;
 using Dapper;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Hosting.Internal;
 using System;
 using System.Configuration;
 using System.Data;
+using System.Security.Claims;
 
 namespace BackendSystem.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
+    [EnableCors("MyAllowSpecificOrigins")]
     public class ProductAPIController : ControllerBase
     {
-        private readonly IDbConnection _dbConnection;
-        public ProductAPIController(IDbConnection dbConnection)
+        private readonly IProductService _productService;
+        private readonly IDbConnection _connection;
+        public ProductAPIController(IProductService productService, IDbConnection connection)
         {
-            _dbConnection = dbConnection;
+            _productService = productService;
+            _connection = connection;
         }
 
         [HttpGet]
-        public IEnumerable<Product> GetProductList()
+        public IEnumerable<ProductViewModel?> GetProductList()
         {
-            string str = @"SELECT * FROM Product";
-            var product = _dbConnection.Query<Product>(str);
-            return product;
+            var products = _productService.GetProductList();
+            return products;
         }
 
-        [HttpGet("id")]
-        public IEnumerable<Product> GetProduct(int id )
+       [HttpGet("{id}")]
+        public async Task<ActionResult<ProductViewModel?>> GetProduct(int id )
         {
-            string str = @"SELECT * FROM Product WHERE ProductId = @ProductId";
-            //在使用DynamicParameters會協助隱含轉換型別，例如int、bool等較常見的型別。
-            var param = new DynamicParameters();
-            //也可以指定強型別
-            param.Add("ProductId", id, System.Data.DbType.Int32);
-            var product = _dbConnection.Query<Product>(str, param);
-            return product;
+            var userIdClaim = HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            if(userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            {
+                Console.WriteLine($"User ID: {userId}");
+            }
+            else
+            {
+                Console.WriteLine($"找不到使用者ID");
+            }
+            var product = await _productService.GetProduct(id);
+            return Ok(product);
         }
 
-        [HttpPost]
-        public string Create(Product param)
+        [HttpPost("Create")]
+        [Authorize(Roles="Admin")]
+        public async Task<bool> Create(ProductInfo param)
         {
-            string str = @"INSERT INTO Product (ProductId, ProductName, Price, Description) VALUES (@ProductId, @ProductName, @Price, @Description);";
-            //直接指定輸入的物件格式
-            _dbConnection.Execute(str, param);
-            return "Success!!";
+           return await _productService.Create(param);
         }
 
-        [HttpDelete("id")]
-        public string Delete(int id)
+        [HttpPost("Update")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<bool>> UpdateProduct(ProductInfo param)
         {
-            string str = @"DELETE FROM Product WHERE ProductId=@ProductId";
-            var param = new DynamicParameters();
-            param.Add("ProductId", id, System.Data.DbType.Int32);
-            _dbConnection.Execute(str, param);
-            return "Delete Success!!";
+            bool result = await _productService.UpdateProduct(param);
+
+            if (result)
+            {
+                return Ok();
+            }
+            else
+            {
+                return NotFound();
+            }
+
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<bool>> Delete(int id)
+        {
+            bool result = await _productService.Delete(id);
+
+            if (result)
+            {
+                return Ok();
+            }
+            else
+            {
+                return NotFound();
+            }
+
         }
     }
 }
