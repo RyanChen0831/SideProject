@@ -1,20 +1,14 @@
-﻿using BackendSystem.Respository.Dtos;
-using StackExchange.Redis;
-using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BackendSystem.Respository.ResultModel;
 
 namespace BackendSystem.Respository.Interface
 {
     public interface IShoppingCartRespository
     {
-        public Task AddItemToCartAsync(string userId, string productId, int quantity);
-        public Task<int?> GetCartItemQuantityAsync(string userId, string productId);
-        public Task RemoveItemFromCartAsync(string userId, string productId);
-        public Task ClearCartAsync(int userId);
-        public Task<List<ShoppingCartDataModel>> GetCartItemAsync(int userId);
+        public Task AddItemToCartAsync(int memberId, ShoppingCartResultModel cart);
+        public Task<int?> GetCartItemQuantityAsync(int memberId, int productId);
+        public Task RemoveItemFromCartAsync(int memberId, int productId);
+        public Task ClearCartAsync(int memberId);
+        public Task<List<ShoppingCartResultModel>> GetCartItemAsync(int memberId);
+        public Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartResultModel> cart);
     }
 }

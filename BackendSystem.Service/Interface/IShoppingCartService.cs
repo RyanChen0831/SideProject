@@ -1,19 +1,14 @@
-﻿using BackendSystem.Respository.Dtos;
-using BackendSystem.Service.Dtos;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BackendSystem.Service.Dtos;
 
 namespace BackendSystem.Service.Interface
 {
     public interface IShoppingCartService
     {
-        public Task AddItemToCartAsync(int userId, string productId, int quantity);
-        public Task<int?> GetCartItemQuantityAsync(int userId, string productId);
-        public Task RemoveItemFromCartAsync(int userId, string productId);
-        public Task ClearCartAsync(int userId);
-        public Task<List<ShoppingCartViewModel?>> GetCartItemAsync(int userId);
+        public Task AddItemToCartAsync(int memberId, ShoppingCartViewModel cart);
+        public Task<int?> GetCartItemQuantityAsync(int memberId, int productId);
+        public Task RemoveItemFromCartAsync(int memberId, int productId);
+        public Task ClearCartAsync(int memberId);
+        public Task<List<ShoppingCartViewModel?>> GetCartItemAsync(int memberId);
+        public Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartViewModel> cart);
     }
 }

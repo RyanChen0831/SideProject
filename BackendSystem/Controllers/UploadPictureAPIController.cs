@@ -1,10 +1,12 @@
-﻿using BackendSystem.Models;
+﻿using Amazon;
+using Amazon.S3;
+using Amazon.S3.Transfer;
+using BackendSystem.Models;
 using Dapper;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using System.Data;
-using System.Data.Common;
-using System.IO;
 
 namespace BackendSystem.Controllers
 {
@@ -16,7 +18,7 @@ namespace BackendSystem.Controllers
         private readonly long _fileSizeLimit;
         private readonly IDbConnection _dbConnection;
 
-        public UploadPictureAPIController(IConfiguration config,IDbConnection dbConnection)
+        public UploadPictureAPIController(IConfiguration config,IDbConnection dbConnection,IAmazonS3 amazonS3)
         {
             _fileSizeLimit = config.GetValue<long>("FileSizeLimit");
             var date = DateTime.Now.ToString("yyyyMMdd");
@@ -28,10 +30,12 @@ namespace BackendSystem.Controllers
             _dbConnection = dbConnection;
         }
         [HttpPost]
+        [EnableCors("MyAllowSpecificOrigins")]
+        [Authorize(Roles= "Admin")]
         public async Task<IActionResult> UploadData([FromForm]UploadData files)
         {
 
-            var ImageMappingProductId = files.ProductID;
+            var ImageMappingProductId = files.ProductId;
             var ImageName = files.Name;
             var ImgDescription =files.ImgDescription;
 
@@ -52,7 +56,7 @@ namespace BackendSystem.Controllers
                         }
                         var param = new ProductImage
                         {
-                            ProductID = ImageMappingProductId,
+                            ProductId = ImageMappingProductId,
                             Name = ImageName,
                             Path = filePath,
                             ImgDescription = ImgDescription
@@ -89,8 +93,6 @@ namespace BackendSystem.Controllers
             }            
             return false;
         }
-
-      
 
     }
 }

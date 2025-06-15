@@ -1,6 +1,6 @@
 ﻿using AutoMapper;
-using BackendSystem.Respository.Dtos;
 using BackendSystem.Respository.Interface;
+using BackendSystem.Respository.ResultModel;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Interface;
 
@@ -16,31 +16,39 @@ namespace BackendSystem.Service.Implement
             _mapper = mapper;
         }
 
-        public async Task AddItemToCartAsync(string userId, string productId, int quantity)
+        public async Task AddItemToCartAsync(int memberId, ShoppingCartViewModel cart)
         {
-            await _shoppingCartRepository.AddItemToCartAsync(userId, productId, quantity);
+            var addItem = _mapper.Map<ShoppingCartViewModel, ShoppingCartResultModel>(cart);
+            await _shoppingCartRepository.AddItemToCartAsync(memberId, addItem);
         }
 
-        public async Task<int?> GetCartItemQuantityAsync(string userId, string productId)
+        public async Task<int?> GetCartItemQuantityAsync(int memberId, int productId)
         {
-            return await _shoppingCartRepository.GetCartItemQuantityAsync(userId, productId);
+            return await _shoppingCartRepository.GetCartItemQuantityAsync(memberId, productId);
         }
 
-        public async Task RemoveItemFromCartAsync(string userId, string productId)
+        public async Task RemoveItemFromCartAsync(int memberId, int productId)
         {
-            await _shoppingCartRepository.RemoveItemFromCartAsync(userId, productId);
+            await _shoppingCartRepository.RemoveItemFromCartAsync(memberId, productId);
         }
 
-        public async Task ClearCartAsync(int userId)
+        public async Task ClearCartAsync(int memberId)
         {
-            await _shoppingCartRepository.ClearCartAsync(userId);
+            await _shoppingCartRepository.ClearCartAsync(memberId);
         }
 
-        public async Task<List<ShoppingCartViewModel?>> GetCartItemAsync(int userId)
+        public async Task<List<ShoppingCartViewModel?>> GetCartItemAsync(int memberId)
         {
-             var value = await _shoppingCartRepository.GetCartItemAsync(userId);
-             var result = _mapper.Map<IEnumerable<ShoppingCartDataModel?>, IEnumerable<ShoppingCartViewModel?>>(value);
+             var value = await _shoppingCartRepository.GetCartItemAsync(memberId);
+             var result = _mapper.Map<IEnumerable<ShoppingCartResultModel?>, IEnumerable<ShoppingCartViewModel?>>(value);
             return result.ToList();
+        }
+
+        public async Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartViewModel> cart)
+        {
+            var cartList = _mapper.Map<List<ShoppingCartResultModel>>(cart);
+            var value = await _shoppingCartRepository.UpdateCartItemAsync(memberId, cartList);
+            return true;
         }
     }
 }

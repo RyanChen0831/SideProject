@@ -1,23 +1,22 @@
 ﻿using BackendSystem.Respository.Dtos;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using BackendSystem.Respository.ResultModel;
 
 namespace BackendSystem.Service.Interface
 {
     public interface IProductRespository
     {
-       
-        public IEnumerable<ProductDataModel?> GetProductList();
-
-        public Task<ProductDataModel?> GetProduct(int id);
-
-        public Task<bool> Create(ProductCondition param);
+        public Task<IEnumerable<ProductResultModel>> GetProductList();
+        public Task<ProductResultModel?> GetProduct(int id);
+        public Task<int> Create(ProductCondition param);
+        public Task AddCategory(List<int> param);
         public Task<bool> UpdateProduct(ProductCondition product);
         public Task<bool> Delete(int id);
-        public Task<bool> CheckProductStock(int quantity, int productid);
+        public Task DeleteProductImage(int productId, List<string> images);
+        public Task<int?> GetProductStock(int productid);
         public Task<bool> RemoveProductStock(int quantity, int productid);
+        public Task<bool> UpdateProdcutStatus(int productid, string status);
+        public Task<IEnumerable<ProductCategoryResultModel>> GetProductCategory();
+
+        public Task InsertProductImage(ProductImageResultModel image);
     }
 }

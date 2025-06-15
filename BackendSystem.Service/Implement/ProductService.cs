@@ -1,13 +1,9 @@
 ﻿using AutoMapper;
 using BackendSystem.Respository.Dtos;
+using BackendSystem.Respository.Implement;
+using BackendSystem.Respository.ResultModel;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Interface;
-using BackendSystem.Service.ServiceMapping;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BackendSystem.Service.Implement
 {
@@ -21,16 +17,21 @@ namespace BackendSystem.Service.Implement
             _mapper = mapper;
         }
 
-        public Task<bool> CheckProductStock(int quantity, int productid)
+        public async Task<bool> CheckProductStock(int quantity, int productid)
         {
-            return _productRespository.CheckProductStock(quantity, productid);
+            var stock = await _productRespository.GetProductStock(productid);
+
+            if (!stock.HasValue || quantity > stock.Value)
+            {
+                return false;
+            }
+            return true;
+
         }
 
-        public async Task<bool> Create(ProductInfo param)
+        public async Task<int> Create(ProductInfo param)
         {
-            //先做Model的轉換
-            var par = _mapper.Map<ProductInfo, ProductCondition>(param);
-            //帶入Creat方法中
+            var par = _mapper.Map<ProductCondition>(param);
             return await _productRespository.Create(par);
         }
 
@@ -51,24 +52,26 @@ namespace BackendSystem.Service.Implement
             }
             else
             {
-                var result = _mapper.Map<ProductDataModel?, ProductViewModel?>(data);
+                var result = _mapper.Map<ProductResultModel?, ProductViewModel?>(data);
                 return result;
             }
         }
 
-        public IEnumerable<ProductViewModel?> GetProductList()
+        public async Task<IEnumerable<ProductViewModel?>> GetProductList()
         {
-            var data = _productRespository.GetProductList();
-            var result = _mapper.Map<IEnumerable<ProductDataModel?>,IEnumerable<ProductViewModel?>>(data);
+            var data = await _productRespository.GetProductList();
+            var result = _mapper.Map<IEnumerable<ProductResultModel?>, IEnumerable<ProductViewModel?>>(data);
 
             return result;
         }
+
         public async Task<bool> UpdateProduct(ProductInfo product)
         {
             var param = _mapper.Map<ProductInfo, ProductCondition>(product);
 
             return await _productRespository.UpdateProduct(param);
         }
+
         public async Task<bool> RemoveProductStock(int quantity, int productid)
         {
             try
@@ -80,7 +83,41 @@ namespace BackendSystem.Service.Implement
             {
                 return false;
                 throw;
-            } 
+            }
+        }
+
+        public async Task<bool> UpdateProdcutStatus(int productid, string status)
+        {
+            var res = await _productRespository.UpdateProdcutStatus(productid, status);
+
+            if (res)
+            {
+                return true;
+            }
+            else { 
+                return false; 
+            }
+
+        }
+
+        public async Task<IEnumerable<ProductCategoryViewModel>> GetProductCategory()
+        {
+            var res = await _productRespository.GetProductCategory();
+
+            return _mapper.Map<IEnumerable<ProductCategoryViewModel>>(res);
+
+        }
+
+        public async Task DeleteProductImage(int productId, List<string> images)
+        {
+            try
+            {
+                await _productRespository.DeleteProductImage(productId, images);
+            }
+            catch (Exception)
+            {
+                throw;
+            }
         }
     }
 }

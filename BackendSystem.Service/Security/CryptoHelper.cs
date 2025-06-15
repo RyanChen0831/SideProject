@@ -20,8 +20,8 @@ namespace BackendSystem.Service.Security
                 throw new ArgumentNullException("Data, Hash Key, and Hash IV cannot be null or empty.");
             }
 
-            byte[] dataKey = Encoding.UTF8.GetBytes(hashKey);
-            byte[] dataIV = Encoding.UTF8.GetBytes(hashIV);
+            byte[] dataKey = GetValidKeyOrIV(hashKey,32);
+            byte[] dataIV = GetValidKeyOrIV(hashIV,16);
 
             using (Aes aes = Aes.Create())
             {
@@ -88,20 +88,11 @@ namespace BackendSystem.Service.Security
         /// <returns>加密後字串</returns>
         public static string EncryptSHA256(string source)
         {
-            string? result = string.Empty;
-
             using (SHA256 algorithm = SHA256.Create())
             {
                 var hash = algorithm.ComputeHash(Encoding.UTF8.GetBytes(source));
-
-                if (hash != null)
-                {
-                    result = BitConverter.ToString(hash)?.Replace("-", string.Empty)?.ToUpper();
-                }
-
+                return BitConverter.ToString(hash).Replace("-", string.Empty).ToUpper();
             }
-
-            return result;
         }
 
         /// <summary>
@@ -183,6 +174,29 @@ namespace BackendSystem.Service.Security
             return Encoding.UTF8.GetString(base64EncodedBytes);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="expectedLength"></param>
+        /// <returns></returns>
+        public static byte[] GetValidKeyOrIV(string input, int expectedLength)
+        {
+            // 將字串轉換為 UTF-8 字節陣列
+            byte[] bytes = Encoding.UTF8.GetBytes(input);
+
+            // 如果長度已經符合要求，直接返回
+            if (bytes.Length == expectedLength)
+                return bytes;
+
+            // 如果字節長度不符，則根據需要填充或截斷字節數組
+            byte[] result = new byte[expectedLength];
+
+            // 如果字節長度超過預期長度，進行截斷
+            Array.Copy(bytes, result, Math.Min(bytes.Length, result.Length));
+
+            return result;
+        }
 
     }
 }

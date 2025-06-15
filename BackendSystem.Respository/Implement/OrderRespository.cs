@@ -1,17 +1,12 @@
-﻿using BackendSystem.Respository.Interface;
-using System;
-using System.Collections.Generic;
-using System.Data;
+﻿using BackendSystem.Respository.Dtos;
+using BackendSystem.Respository.Interface;
+using BackendSystem.Respository.ResultModel;
 using Dapper;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using BackendSystem.Respository.Dtos;
-using System.Reflection.Metadata;
+using System.Data;
 
 namespace BackendSystem.Respository.Implement
 {
-    public class OrderRespository :IOrderRespository
+    public class OrderRespository : IOrderRespository
     {
         private readonly IDbConnection _dbConnection;
         public OrderRespository(IDbConnection dbConnection)
@@ -23,14 +18,14 @@ namespace BackendSystem.Respository.Implement
         public async Task<IEnumerable<OrderDataModel>> GetOrderList()
         {
             var orderList = new List<OrderDataModel>();
-            var str = @"SELECT O.OrderID,OD.ProductID,OD.Quantity,OD.UnitPrice,OD.SubTotal,O.ShippingAddress,O.Payment,O.PaymentStatus ,O.OrderDate
-	                        FROM [Order] O
-                        INNER JOIN [OrderDetial] OD ON O.OrderID = OD.OrderID";
+            var str = @"SELECT O.OrderId,OD.ProductId,OD.Quantity,OD.UnitPrice,OD.SubTotal,O.ShippingAddress,O.Payment,O.PaymentStatus ,O.OrderDate
+	                        FROM [Orders] O
+                        INNER JOIN [OrderDetial] OD ON O.OrderId = OD.OrderId";
             var data = await _dbConnection.QueryAsync<OrderDataModel>(str);
             return data.Select(item => new OrderDataModel
             {
-                OrderID = item.OrderID,
-                ProductID = item.ProductID,
+                OrderId = item.OrderId,
+                ProductId = item.ProductId,
                 Quantity = item.Quantity,
                 UnitPrice = item.UnitPrice,
                 SubTotal = item.SubTotal,
@@ -41,29 +36,34 @@ namespace BackendSystem.Respository.Implement
             });
 
         }
-        //使用者的OrderList，返回OrderDataModel
-        public async Task<IEnumerable<OrderDataModel>> GetOrder(int userId)
+        public async Task<IEnumerable<OrderResultModel>> GetOrder(int memberId)
         {
-            var orderList  = new List<OrderDataModel>();
-            var str = @"SELECT O.OrderID,OD.ProductID,OD.Quantity,OD.UnitPrice,OD.SubTotal,O.ShippingAddress,O.Payment,O.PaymentStatus ,O.OrderDate
-	                        FROM [Order] O
-                        INNER JOIN [OrderDetial] OD ON O.OrderID = OD.OrderID
-                        WHERE O.UserID=@UserID";
+            Dictionary<string, OrderResultModel> orderDict = new Dictionary<string, OrderResultModel>();
+            var str = @"
+                    SELECT [Orders].*,Prodcut.ProductName,[OrderDetail].Quantity,[OrderDetail].SubTotal,PImage.Path FROM [Orders] 
+                    INNER JOIN [OrderDetail] ON[Orders].OrderId = [OrderDetail].OrderId
+                    INNER JOIN [Product] Prodcut ON [OrderDetail].ProductId = Prodcut.ProductId
+                    LEFT JOIN ProductImage PImage ON PImage.ProductId = Prodcut.ProductId
+                    Where MemberId=@MemberId ";
             var parm = new DynamicParameters();
-            parm.Add("UserID", userId, DbType.Int32);
-            var data =  await _dbConnection.QueryAsync<OrderDataModel>(str, parm);
-            return data.Select(item => new OrderDataModel
-            {
-                OrderID = item.OrderID,
-                ProductID = item.ProductID,
-                Quantity = item.Quantity,
-                UnitPrice = item.UnitPrice,
-                SubTotal = item.SubTotal,
-                ShippingAddress = item.ShippingAddress,
-                Payment = item.Payment,
-                PaymentStatus = item.PaymentStatus,
-                OrderDate = item.OrderDate
-            });
+            parm.Add("MemberId", memberId, DbType.Int32);
+            var data = await _dbConnection.QueryAsync<OrderResultModel, OrderDetailResultModel, OrderResultModel>(
+                str,
+                (order, orderDetail) =>
+                {
+                    if (!orderDict.TryGetValue(order.OrderId, out var currentOrder))
+                    {
+                        currentOrder = order;
+                        currentOrder.OrderDetail = new List<OrderDetailResultModel>();
+                        orderDict.Add(order.OrderId, currentOrder);
+                    }
+                    currentOrder.OrderDetail.Add(orderDetail);
+                    return currentOrder;
+                }
+                , parm
+                , splitOn: "ProductName"
+                );
+            return orderDict.Values;
         }
 
         //更改訂單狀態，資料格式OrderCondition
@@ -71,10 +71,10 @@ namespace BackendSystem.Respository.Implement
         {
             try
             {
-                var str = @"UPDATE [Order] SET Payment = @StatusID WHERE OrderID = @OrderID";
+                var str = @"UPDATE [Orders] SET Payment = @StatusID WHERE OrderId = @OrderId";
                 var parm = new DynamicParameters();
-                parm.Add("StatusID", orderCondition.StatusID, DbType.Int32);
-                parm.Add("OrderID", orderCondition.OrderID, DbType.String);
+                parm.Add("StatusID", orderCondition.StatusId, DbType.Int32);
+                parm.Add("OrderID", orderCondition.OrderId, DbType.String);
 
                 await _dbConnection.ExecuteAsync(str, parm);
 
@@ -96,10 +96,10 @@ namespace BackendSystem.Respository.Implement
             try
             {
                 //新增訂單
-                var createOrder = @"INSERT INTO [Order] 
-                                ([OrderID],[UserID],[OrderDate],[TotalAmount],[ShippingAddress],[ShippingStatus],[Payment],[PaymentStatus]) 
+                var createOrder = @"INSERT INTO [Orders] 
+                                ([OrderId],[MemberId],[OrderDate],[TotalAmount],[ShippingAddress],[ShippingStatus],[Payment],[PaymentStatus]) 
                                 VALUES
-                                (@OrderID,@UserID,GETDATE(),@TotalAmount,@ShippingAddress,@ShippingStatus,@Payment,@PaymentStatus)";
+                                (@OrderId,@MemberId,GETDATE(),@TotalAmount,@ShippingAddress,@ShippingStatus,@Payment,@PaymentStatus)";
                 var parm = new DynamicParameters(order);
 
                 await _dbConnection.ExecuteAsync(createOrder, parm);
@@ -124,9 +124,9 @@ namespace BackendSystem.Respository.Implement
             {
 
                 //新增訂單明細
-                var createOrderDetail = @"INSERT INTO [OrderDetail] ([OrderID],[ProductID],[Quantity],[UnitPrice],[SubTotal]) 
+                var createOrderDetail = @"INSERT INTO [OrderDetail] ([OrderId],[ProductId],[Quantity],[UnitPrice],[SubTotal]) 
                                             VALUES
-                                          (@OrderID,@ProductID,@Quantity,@UnitPrice,@SubTotal)";
+                                          (@OrderId,@ProductId,@Quantity,@UnitPrice,@SubTotal)";
                 var orderDetailParameters = new DynamicParameters(orderDetail);
 
                 await _dbConnection.ExecuteAsync(createOrderDetail, orderDetailParameters);

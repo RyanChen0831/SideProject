@@ -1,18 +1,14 @@
-﻿using BackendSystem.Respository.Dtos;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BackendSystem.Respository.CommandModels;
+using BackendSystem.Respository.ResultModel;
 
 namespace BackendSystem.Respository.Interface
 {
     public interface IOrderRespository
     {
         public Task<IEnumerable<OrderDataModel>> GetOrderList();
-        public Task<IEnumerable<OrderDataModel>> GetOrder(int userId);
-        public Task<bool> CreateOrder(OrderCondition order);
+        public Task<IEnumerable<OrderResultModel>> GetOrder(int memberId);
+        public Task<bool> CreateOrder(OrderCommandModel order);
         public Task<bool> CreateOrderDetail(OrderDetailCondition orderDetail);
-        public Task<bool> UpdateOrderStatus(OrderStatusCondition orderCondition);
+        public Task<bool> UpdateOrderStatus(OrderStatusCommandModel orderCondition);
     }
 }

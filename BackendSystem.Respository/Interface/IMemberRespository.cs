@@ -1,16 +1,17 @@
-﻿using BackendSystem.Respository.Dtos;
+﻿
+using BackendSystem.Respository.CommandModels;
+using BackendSystem.Respository.ResultModel;
 
 namespace BackendSystem.Respository.Interface
 {
     public interface IMemberRespository
     {
-        public Task<IEnumerable<MemberCondition>> GetAllMember();
-        public Task<MemberCondition> GetMember(string account,string password);
-        public Task<bool> Register(MemberCondition member);
-        public Task<bool> DeleteMember(MemberCondition member);
-        public Task<bool> UpdateMember(MemberCondition member);
-        public Task<RegisterOperationResult> CheckRegistration(MemberCondition member);
-        public Task<bool> UpdateMemberVerificationStatus(int userId);
+
+        public Task<MemberCommandModel> GetMember(string account, string password);
+        public Task<MemberProfileResultModel> GetMember(int memberId);
+        public Task<bool> Register(MemberCommandModel member);
+        public Task<RegisterOperationResultModel> CheckRegistration(MemberCommandModel member);
+
 
     }
 }

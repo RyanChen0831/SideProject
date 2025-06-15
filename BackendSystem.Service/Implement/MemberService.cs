@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using BackendSystem.Respository.Dtos;
 using BackendSystem.Respository.Interface;
+using BackendSystem.Respository.ResultModel;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Interface;
 using BackendSystem.Service.Security;
@@ -39,12 +40,12 @@ namespace BackendSystem.Service.Implement
             }
         }
 
-        public async Task<IEnumerable<MemberViewModel>> GetAllMember()
+        public async Task<IEnumerable<Dtos.MemberResultModel>> GetAllMember()
         {
             try
             {
                 var list = await _memberRespository.GetAllMember();
-                return _mapper.Map< IEnumerable <MemberCondition> ,IEnumerable<MemberViewModel> > (list);
+                return _mapper.Map<IEnumerable<MemberCondition>, IEnumerable<Dtos.MemberResultModel>> (list);
             }
             catch (Exception)
             {
@@ -52,12 +53,12 @@ namespace BackendSystem.Service.Implement
             }
         }
 
-        public async Task<MemberViewModel> GetMember(string account, string password)
+        public async Task<Dtos.MemberResultModel> GetMember(string account, string password)
         {
             try
             {
                 var member = await _memberRespository.GetMember(account, password);
-                return _mapper.Map<MemberCondition, MemberViewModel>(member);
+                return _mapper.Map<MemberCondition, Dtos.MemberResultModel>(member);
             }
             catch (Exception)
             {
@@ -67,30 +68,27 @@ namespace BackendSystem.Service.Implement
 
         public async Task<OperationResultDTO<string>> RegisterMember(MemberInfo member)
         {
-            bool register;
-            var parm = _mapper.Map<MemberInfo, MemberCondition>(member);
-            var checkResult =  await _memberRespository.CheckRegistration(parm);
-            if (checkResult.IsSucceed)
-            {                
-                try
+            try
+            {
+                var parm = _mapper.Map<MemberCondition>(member);
+                var checkResult = await _memberRespository.CheckRegistration(parm);
+                if (checkResult.IsSucceed)
                 {
-                    register = await _memberRespository.Register(parm);
-                    if (register) {
+                    if (await _memberRespository.Register(parm))
+                    {
                         var user = await _memberRespository.GetMember(member.Account, member.Password);
-                        _mailService.SendRegisterEamil(member.Mail, member.Name, user.UserId, user.Role);
-                    }                   
-                    return new OperationResultDTO<string>(register, string.Empty);
+                        await _mailService.SendRegisterEamil(member.Mail, member.Name, user.MemberId, user.Role);
+                    }
+                    return new OperationResultDTO<string>(true, string.Empty);
                 }
-                catch (Exception error)
+                else
                 {
-                    register = false;
-                    return new OperationResultDTO<string>(register, error.Message);
-                    throw;
+                    return new OperationResultDTO<string>(false, checkResult.Message);
                 }
-                
             }
-            else {
-                return new OperationResultDTO<string>(false, checkResult.Message);
+            catch (Exception error)
+            {
+                return new OperationResultDTO<string>(false, $"註冊時發生錯誤: {error.Message}");
             }
         }
 
@@ -99,9 +97,9 @@ namespace BackendSystem.Service.Implement
             throw new NotImplementedException();
         }
 
-        public async Task<bool> UpdateMemberVerificationStatus(int userId)
+        public async Task<bool> UpdateMemberVerificationStatus(int memberId)
         {            
-             return await _memberRespository.UpdateMemberVerificationStatus(userId);
+             return await _memberRespository.UpdateMemberVerificationStatus(memberId);
         }
         
         public async Task<OperationResultDTO<User>> VerifyEmail(string info)
@@ -127,19 +125,31 @@ namespace BackendSystem.Service.Implement
             return new OperationResultDTO<User>(result, user);
         }
 
-        public int? GetUserId()
+        public int? GetMemberId()
         {
             // 從 HttpContext.User.Claims 中尋找使用者ID的 Claim
             var userIdClaim = _httpContextAccessor.HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
 
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
+            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int memberId))
             {
-                return userId;
+                return memberId;
             }
 
             return null;
         }
 
+        public async Task<MemberViewModel> GetMember(int memberId)
+        {
+            try
+            {
+                var member = await _memberRespository.GetMember(memberId);
+                return _mapper.Map<Respository.ResultModel.MemberProfileResultModel, MemberViewModel>(member);
+            }
+            catch (Exception)
+            {
+                throw;
+            }
+        }
 
     }
 

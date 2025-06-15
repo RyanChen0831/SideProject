@@ -1,6 +1,7 @@
 ﻿using AutoMapper;
 using BackendSystem.Respository.Dtos;
 using BackendSystem.Respository.Interface;
+using BackendSystem.Respository.ResultModel;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Interface;
 using StackExchange.Redis;
@@ -48,10 +49,10 @@ namespace BackendSystem.Service.Implement
             }
         }
 
-        public async Task<IEnumerable<OrderViewModel>> GetOrder(int userId)
+        public async Task<IEnumerable<OrderDTO>> GetOrder(int memberId)
         {
-            var order = await _orderRespository.GetOrder(userId);
-            var result = _mapper.Map<IEnumerable<OrderDataModel>, IEnumerable<OrderViewModel> >(order);
+            var order = await _orderRespository.GetOrder(memberId);
+            var result = _mapper.Map<IEnumerable<Respository.ResultModel.OrderResultModel>, IEnumerable<OrderDTO> >(order);
             return result;
         }
 

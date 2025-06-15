@@ -1,4 +1,4 @@
-﻿using BackendSystem.DTO;
+﻿using BackendSystem.Dtos;
 using BackendSystem.Respository.Implement;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Implement;
@@ -42,75 +42,66 @@ namespace BackendSystem.Controllers
         /// <param name=""></param>
         /// <returns></returns>
         [HttpPost]
-        public async Task<ActionResult<PaymentViewModel>> PaymentCheck(TradingInfo tradingInfo)
+        [Authorize]
+        public async Task<ActionResult<PaymentViewModel>> PaymentCheck([FromBody]TradingInfo tradingInfo)
         {
             var isSuccess = true;
             string productStr = "";
             int countAmount = 0;
-            int userId;
+            int memberId;
             try
             {
                 // 從 HttpContext.User.Claims 中尋找使用者ID的 Claim
                 var userIdClaim = HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
 
-                if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int _userId))
+                if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int _memberId))
                 {
-                    userId = _userId;
+                    memberId = _memberId;
                 }
                 else
                 {
                     return Unauthorized("找不到使用者");
                 }
 
-                var cartItem = await _shoppingCartService.GetCartItemAsync(userId);
-                //將購物車中的所有商品進行庫存檢查
-                var isAvailable = await CheckStock(cartItem);
-                if (isAvailable)
+                var cartItem = await _shoppingCartService.GetCartItemAsync(memberId);
+                if (cartItem == null || !(await CheckStock(cartItem)))  // 檢查庫存
                 {
-                    await RemoveStock(cartItem);
-                }
-                else
-                {
-                    isSuccess = false;
+                    return BadRequest(new { Status = "Failed", Message = "庫存不足" });
                 }
 
-                if (cartItem == null )
-                {
-                    isSuccess = false;
-                }
-                else
-                {
-                    productStr = await CheckProduct(cartItem);
-                    countAmount = CountingAmount(cartItem);
-                }
+                await RemoveStock(cartItem);  // 扣庫存
+
+                productStr = await CheckProduct(cartItem);
+                countAmount = CountingAmount(cartItem);
 
                 // 建立訂單信息
                 string merchantID = _config["MerchantID"];
                 string hashKey = _config["HashKey"]; //加密
                 string hashIV = _config["HashIV"]; //加密
-                string version = "2.0"; //金流版本
-                string respondType = "Json"; //回傳格式
+                string version = "2"; //金流版本
+                string respondType = "String"; //回傳格式
                 string itemDesc = productStr; // 商品信息
-                int Amount = countAmount; // 商品信息總金額
+                string Amount = countAmount.ToString(); // 商品信息總金額
                 string tradeLimit = "600"; // 交易限制秒數
                 string timeStamp = DateTimeOffset.Now.ToUnixTimeSeconds().ToString();
-                string notifyURL = @"https://NotifyURL";
-                string returnURL = @"https://NotifyURL";
                 string customerEMail = tradingInfo.Email;
                 string merchantOrderNo = DateTimeOffset.Now.ToString("yyyyMMddHHmmss") + "_" + timeStamp;//OrderId
+                string notifyURL = @"https://eaf5-2001-b011-2017-588b-cdb6-f1d1-836b-a35c.ngrok-free.app/api/PaymentDone";
+                string returnURL = $"https://localhost:5173/paymentresult?{merchantOrderNo}";                
 
                 IDictionary<string, string> Params = new Dictionary<string, string>
                 {
                     { "MerchantID", merchantID },
-                    { "Version", version },
                     { "RespondType", respondType },
+                    { "TimeStamp", timeStamp },
+                    { "Version", version },
+                    { "MerchantOrderNo", merchantOrderNo},
+                    { "Amt", Amount},
                     { "ItemDesc", itemDesc },
                     { "TradeLimit", tradeLimit },
                     { "NotifyURL", notifyURL },
-                    { "TimeStamp", timeStamp },
                     { "ReturnURL", returnURL },
-                    { "Email", customerEMail},
-                    { "MerchantOrderNo", merchantOrderNo}
+                    { "Email", customerEMail}
                 };
 
                 string tradeQuery = string.Join("&", Params.Select(res => $"{res.Key}={res.Value}"));
@@ -122,26 +113,23 @@ namespace BackendSystem.Controllers
                 if (isSuccess) {
                     var order = new OrderInfo {
                         OrderId= merchantOrderNo,
-                        UserID = userId,
-                        TotalAmount = Amount,
-                        ShippingAddress = tradingInfo.shippingAddress,
+                        MemberId = memberId,
+                        TotalAmount = Convert.ToInt32(Amount),
+                        ShippingAddress = tradingInfo.ShippingAddress,
                         ShippingStatus = "Processing",
                         Payment = tradingInfo.Payment,
-                        PaymentStatus="Depending",
+                        PaymentStatus="Completed",
                     };
-                    var createOrder = await CreateOrder(userId, order);
+                    var createOrder = await CreateOrder(memberId, order);
                     var createOrderDetail = await CreateOrderDetail(merchantOrderNo, cartItem!);
-
-                    ////清空購物車
-                    //await _shoppingCartService.ClearCartAsync(userId);
-
+                    await _shoppingCartService.ClearCartAsync(memberId);//清空購物車
                 }
                 return Ok(new PaymentViewModel
                 {
                     Status = isSuccess ? "Success" : "Failed",
                     MerchantID = merchantID,
-                    TradeInfo = tradeInfo,
-                    TradeSha = tradeSha,
+                    TradeInfo = isSuccess ? tradeInfo : null,
+                    TradeSha = isSuccess ? tradeSha : null,
                     Version = version
                 });
             }
@@ -155,27 +143,41 @@ namespace BackendSystem.Controllers
         /// 付款完成進行解密交易資訊及更新訂單狀態
         /// </summary>
         [HttpPost("PayDone")]
-        public void PayDone([FromBody]PaymentViewModel payment)
+        public IActionResult PayDone([FromBody] PaymentViewModel payment)
         {
-            string hashKey = _config["HashKey"]; 
-            string hashIV = _config["HashIV"];
-            var decrytostring = CryptoHelper.DecryptAES(payment.TradeInfo!, hashKey, hashIV);
-            //解密字串
-            NameValueCollection Request = HttpUtility.ParseQueryString(decrytostring!);
-            //取出訂單號
-            string orderID = Request["MerchantOrderNo"]!;
-            //更改訂單狀態
-            var order = new OrderStatusInfo() 
-            { 
-                OrderID = orderID,
-                StatusID = 2,
-            };
-            _orderService.UpdateOrderStatus(order);
-            //待完成
-            //寄出訂單的連結到使用者的Mail
+            try
+            {
+                string hashKey = _config["HashKey"];
+                string hashIV = _config["HashIV"];
 
+                // 解密 TradeInfo
+                var decryptedString = CryptoHelper.DecryptAES(payment.TradeInfo!, hashKey, hashIV);
+                NameValueCollection requestParams = HttpUtility.ParseQueryString(decryptedString!);
 
+                // 取出訂單號
+                string orderId = requestParams["MerchantOrderNo"]!;
+                string status = requestParams["Status"]!; // 交易狀態
+
+                if (status == "SUCCESS")
+                {
+                    var order = new OrderStatusInfo()
+                    {
+                        OrderId = orderId,
+                        StatusId = 2, // 設為已付款
+                    };
+
+                    _orderService.UpdateOrderStatus(order);
+                    return Ok("SUCCESS");
+                }
+
+                return BadRequest("交易失敗");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
         }
+
 
 
         /// <summary>
@@ -183,7 +185,7 @@ namespace BackendSystem.Controllers
         /// </summary>
         /// <param name="usesId"></param>
         /// <returns></returns>
-        private async Task<bool> CreateOrder(int userId,OrderInfo order)
+        private async Task<bool> CreateOrder(int memberId,OrderInfo order)
         {
             return await _orderService.CreateOrder(order);
         }
@@ -198,11 +200,11 @@ namespace BackendSystem.Controllers
             foreach (var item in cartItem)
             {
                 var orderDetail = new OrderDetailInfo();
-                var product = await _productService.GetProduct(item.ProductID);
+                var product = await _productService.GetProduct(item.ProductId);
                 if (product != null)
                 {
                     orderDetail.OrderId = orderId;
-                    orderDetail.ProductID = product.ProductID;
+                    orderDetail.ProductId = product.ProductId;
                     orderDetail.UnitPrice = product.Price;
                     orderDetail.Quantity= item.Quantity;
                     orderDetail.SubTotal = product.Price * item.Quantity;
@@ -224,7 +226,7 @@ namespace BackendSystem.Controllers
             {
                 if (item != null)
                 {
-                    var product = await _productService.GetProduct(item.ProductID);
+                    var product = await _productService.GetProduct(item.ProductId);
                     if (product != null)
                     {
                         // 確保商品名稱長度不超過50字元
@@ -269,7 +271,7 @@ namespace BackendSystem.Controllers
             // 使用 LINQ 查詢每個商品的價格，然後乘以數量，最後加總
             var totalAmount = cartItem.Sum(item =>
             {
-                var product = _productService.GetProduct(item!.ProductID).Result;
+                var product = _productService.GetProduct(item!.ProductId).Result;
                 return product!.Price * item.Quantity;
             });
 
@@ -280,7 +282,7 @@ namespace BackendSystem.Controllers
             var result = true;
             foreach (var item in cartItem)
             {
-                result = await _productService.CheckProductStock(item.Quantity,item.ProductID);
+                result = await _productService.CheckProductStock(item.Quantity,item.ProductId);
                 if (!result)
                 {
                     return false;
@@ -294,7 +296,7 @@ namespace BackendSystem.Controllers
             var result = true;
             foreach (var item in cartItem)
             {
-                result = await _productService.RemoveProductStock(item.Quantity, item.ProductID);
+                result = await _productService.RemoveProductStock(item.Quantity, item.ProductId);
                 if (!result)
                 {
                     return false;
@@ -307,9 +309,12 @@ namespace BackendSystem.Controllers
     }
     public class TradingInfo
     {
+        public string Name { get; set; }
         public string Email { get; set; }
+        public string Phone { get; set; }
         public string Payment { get; set; }
-        public string shippingAddress { get; set; }
+        public string ShippingAddress { get; set; }
+        public string PaymentMethod { get; set; }
 
     }
     public class PaymentResult

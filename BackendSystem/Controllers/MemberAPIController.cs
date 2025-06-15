@@ -6,25 +6,36 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using BackendSystem.Dtos;
+using AutoMapper;
 
 namespace BackendSystem.Controllers
 {
     [Route("api/[controller]")]
-    [ApiController]   
+    [ApiController]
+    [EnableCors("MyAllowSpecificOrigins")]
+    [AllowAnonymous]
     public class MemberAPIController : ControllerBase
     {
         private readonly IMemberService _memberService;
-        public MemberAPIController(IMemberService memberService)
+        private readonly IMapper _mapper;
+        public MemberAPIController(IMemberService memberService,IMapper mapper)
         {
             _memberService = memberService;
+            _mapper = mapper;
         }
 
         [HttpPost("Register")]
-        [EnableCors("MyAllowSpecificOrigins")]
-        [AllowAnonymous]
-        public async Task<IActionResult> Register([FromBody]MemberInfo info )
+        public async Task<IActionResult> Register([FromBody]RegisterDTO info )
         {
-            var result = await _memberService.RegisterMember(info);
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+            var parm = _mapper.Map<MemberInfo>(info);
+            var result = await _memberService.RegisterMember(parm);
+
             if (result.IsSucceed == true)
             {
                 return Ok();
@@ -36,8 +47,6 @@ namespace BackendSystem.Controllers
         }
 
         [HttpPost("VerifyEmail")]
-        [EnableCors("MyAllowSpecificOrigins")]
-        [AllowAnonymous]
         public async Task<IActionResult> VerifyEmail([FromBody] string token)
         {
             var result = await _memberService.VerifyEmail(token);
@@ -72,6 +81,22 @@ namespace BackendSystem.Controllers
             }
             return BadRequest(result.Message);
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetMemebr()
+        {
+            int? memberId = _memberService.GetMemberId();
+
+            if (memberId == null)
+            {
+                throw new InvalidOperationException("Member Id cannot be null.");
+            }
+
+            var member =  await _memberService.GetMember(memberId.Value);
+
+            return Ok(member);
+        }
+
 
     }
 }
