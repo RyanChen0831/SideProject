@@ -5,7 +5,7 @@ namespace BackendSystem.Respository.Interface
 {
     public interface IOrderManagementRespository
     {
-        public Task<IEnumerable<OrderDataModel>> GetAllOrderData();
+        public Task<IEnumerable<OrderResultModel>> GetAllOrderData();
         public Task<int> DeleteOrder(OrderCommandModel order);
         public Task<int> UpdateOrder(OrderCommandModel order);
 

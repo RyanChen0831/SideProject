@@ -18,7 +18,7 @@ namespace BackendSystem.Respository.Implement
             throw new NotImplementedException();
         }
 
-        public Task<IEnumerable<OrderDataModel>> GetAllOrderData()
+        public Task<IEnumerable<OrderResultModel>> GetAllOrderData()
         {
             throw new NotImplementedException();
         }
