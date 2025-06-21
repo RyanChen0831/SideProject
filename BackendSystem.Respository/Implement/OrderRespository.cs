@@ -8,13 +8,10 @@ namespace BackendSystem.Respository.Implement
 {
     public class OrderRespository : IOrderRespository
     {
-        private readonly IDbConnection _dbConnection;
-        public OrderRespository(IDbConnection dbConnection)
+        public OrderRespository()
         {
-            _dbConnection = dbConnection;
         }
-
-        public async Task<IEnumerable<OrderResultModel>> GetOrder(int memberId)
+        public async Task<IEnumerable<OrderResultModel>> GetOrder(IDbConnection conn, int memberId)
         {
             Dictionary<string, OrderResultModel> orderDict = new Dictionary<string, OrderResultModel>();
             var str = @"
@@ -44,18 +41,19 @@ namespace BackendSystem.Respository.Implement
             return orderDict.Values;
         }
 
-        //更改訂單狀態，資料格式OrderCondition
-        public async Task<bool> UpdateOrderStatus(OrderDetailCommandModel orderCondition)
+        /// <summary>
+        /// 更改訂單狀態，資料格式OrderCondition
+        /// </summary>
+        /// <param name="conn"></param>
+        /// <param name="tx"></param>
+        /// <param name="orderCondition"></param>
+        /// <returns></returns>
+        public async Task<bool> UpdateOrderStatus(IDbConnection conn, IDbTransaction tx, OrderStatusCommandModel command)
         {
             try
             {
-                var str = @"UPDATE [Orders] SET Payment = @StatusID WHERE OrderId = @OrderId";
-                var parm = new DynamicParameters();
-                parm.Add("StatusID", orderCondition.StatusId, DbType.Int32);
-                parm.Add("OrderID", orderCondition.OrderId, DbType.String);
-
-                await _dbConnection.ExecuteAsync(str, parm);
-
+                var str = @"UPDATE [Orders] SET Payment = @StatusID WHERE OrderId = @OrderId AND ";
+                await conn.ExecuteAsync(str, command, tx);
                 return true;
             }
             catch (Exception ex)
@@ -69,7 +67,7 @@ namespace BackendSystem.Respository.Implement
         /// </summary>
         /// <param name="order"></param>
         /// <returns>bool</returns>
-        public async Task<bool> CreateOrder(OrderCommandModel order)
+        public async Task<bool> CreateOrder(IDbConnection conn, IDbTransaction tx, OrderCommandModel command)
         {
             try
             {
@@ -78,15 +76,12 @@ namespace BackendSystem.Respository.Implement
                                 ([OrderId],[MemberId],[OrderDate],[TotalAmount],[ShippingAddress],[ShippingStatus],[Payment],[PaymentStatus]) 
                                 VALUES
                                 (@OrderId,@MemberId,GETDATE(),@TotalAmount,@ShippingAddress,@ShippingStatus,@Payment,@PaymentStatus)";
-                var parm = new DynamicParameters(order);
-
-                await _dbConnection.ExecuteAsync(createOrder, parm);
-
+                await conn.ExecuteAsync(createOrder, command, tx);
                 return true;
             }
             catch (Exception ex)
             {
-                return false;
+                throw;
             }
 
         }
@@ -96,24 +91,20 @@ namespace BackendSystem.Respository.Implement
         /// </summary>
         /// <param name="orderDetail"></param>
         /// <returns>bool</returns>
-        public async Task<bool> CreateOrderDetail(OrderDetailCommandModel orderDetail)
+        public async Task<bool> CreateOrderDetail(IDbConnection conn, IDbTransaction tx, OrderDetailCommandModel command)
         {
             try
             {
-
                 //新增訂單明細
                 var createOrderDetail = @"INSERT INTO [OrderDetail] ([OrderId],[ProductId],[Quantity],[UnitPrice],[SubTotal]) 
                                             VALUES
                                           (@OrderId,@ProductId,@Quantity,@UnitPrice,@SubTotal)";
-                var orderDetailParameters = new DynamicParameters(orderDetail);
-
-                await _dbConnection.ExecuteAsync(createOrderDetail, orderDetailParameters);
-
+                await conn.ExecuteAsync(createOrderDetail, command, tx);
                 return true;
             }
             catch (Exception ex)
             {
-                return false;
+                throw;
             }
 
         }
