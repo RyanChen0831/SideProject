@@ -1,20 +1,18 @@
 ﻿using BackendSystem.Respository.CommandModels;
 using BackendSystem.Respository.Interface;
-using BackendSystem.Respository.ResultModel;
+using BackendSystem.Respository.ResultModels;
 using Dapper;
 using System.Data;
 
 namespace BackendSystem.Respository.Implement
 {
-    public class MemberRespository: IMemberRespository
+    public class MemberRespository : IMemberRespository
     {
-        private readonly IDbConnection _dbConnection;
         public MemberRespository(IDbConnection dbConnection)
         {
-            _dbConnection = dbConnection;
         }
 
-        public async Task<RegisterOperationResultModel> CheckRegistration(MemberCommandModel member)
+        public async Task<MemberDuplicationCheckResultModel> GetDuplicatedMemberInfo(IDbConnection conn, MemberDuplicationCheckResultModel member)
         {
             string str = @"SELECT Account,Phone,Mail
                            FROM Member
@@ -24,36 +22,21 @@ namespace BackendSystem.Respository.Implement
             parm.Add("Phone", member.Phone);
             parm.Add("Mail", member.Mail);
 
-            var result =  await _dbConnection.QueryFirstOrDefaultAsync<dynamic>(str,parm);
-
-            if (result == null)
-            {
-                return new RegisterOperationResultModel(true, string.Empty);
-            }
-            if (result.Account == member.Account) {
-                return new RegisterOperationResultModel { IsSucceed = false, Message = "Account has already been registered." };
-            }
-            if (result.Phone == member.Phone) {
-                return new RegisterOperationResultModel { IsSucceed = false, Message = "Phone has already been registered." };
-            }
-            if (result.Mail == member.Mail)
-            {
-                return new RegisterOperationResultModel { IsSucceed = false, Message = "Mail has already been registered." };
-            }
-            return new RegisterOperationResultModel(true, string.Empty);
+            var result = await conn.QueryFirstOrDefaultAsync<MemberDuplicationCheckResultModel>(str, parm);
+            return result;
         }
 
-        public async Task<MemberCommandModel> GetMember(string account, string password)
+        public async Task<MemberCommandModel> GetMember(IDbConnection conn, string account, string password)
         {
             string sql = @" SELECT * FROM Member WHERE Account = @Account AND Password = @Password ";
             var parm = new DynamicParameters();
-            parm.Add("Account", account,DbType.String);
+            parm.Add("Account", account, DbType.String);
             parm.Add("Password", password, DbType.String);
-            var members = await _dbConnection.QueryFirstOrDefaultAsync<MemberCommandModel>(sql, parm);
+            var members = await conn.QueryFirstOrDefaultAsync<MemberCommandModel>(sql, parm);
             return members;
         }
 
-        public async Task<MemberProfileResultModel> GetMember(int memberId)
+        public async Task<MemberProfileResultModel> GetMember(IDbConnection conn, int memberId)
         {
             string sql = @" 
                         SELECT MB.Name,MB.Gender,CONVERT(VARCHAR, MB.Birthday, 23) AS Birthday,MB.Phone,MB.Address,MB.Mail,ML.LevelName AS Level, COALESCE(OD.TotalAmount, 0) AS TotalAmount
@@ -68,12 +51,12 @@ namespace BackendSystem.Respository.Implement
                         WHERE MB.MemberId=@MemberId  ";
             var parm = new DynamicParameters();
             parm.Add("MemberId", memberId, DbType.Int32);
-            var member = await _dbConnection.QueryFirstOrDefaultAsync<MemberProfileResultModel>(sql, parm);
+            var member = await conn.QueryFirstOrDefaultAsync<MemberProfileResultModel>(sql, parm);
 
             return member;
         }
 
-        public async Task<bool> Register(MemberCommandModel member)
+        public async Task<bool> RegisterMember(IDbConnection conn, IDbTransaction tx, MemberCommandModel member)
         {
             string sql = @"INSERT INTO Member (Name, Account, Password, Gender, Birthday, Phone, Address, Mail, Role,IsVerifyEmail) 
                    VALUES (@Name, @Account, @Password, @Gender, @Birthday, @Phone, @Address, @Mail, @Role,'N')";
@@ -81,12 +64,12 @@ namespace BackendSystem.Respository.Implement
             parm.AddDynamicParams(member);
             try
             {
-                await _dbConnection.ExecuteAsync(sql, parm);
+                await conn.ExecuteAsync(sql, parm, tx);
                 return true;
             }
             catch (Exception)
             {
-                return false;
+                throw;
             }
         }
     }
