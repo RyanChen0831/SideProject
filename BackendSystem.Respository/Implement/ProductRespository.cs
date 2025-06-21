@@ -1,5 +1,5 @@
-﻿using BackendSystem.Respository.Dtos;
-using BackendSystem.Respository.ResultModel;
+﻿using BackendSystem.Respository.CommandModels;
+using BackendSystem.Respository.ResultModels;
 using BackendSystem.Service.Interface;
 using Dapper;
 using System.Data;
@@ -8,71 +8,18 @@ namespace BackendSystem.Respository.Implement
 {
     public class ProductRespository : IProductRespository
     {
-        private readonly IDbConnection _dbConnection;
-        public ProductRespository(IDbConnection dbConnection)
+        public ProductRespository()
         {
-            _dbConnection = dbConnection;
         }
-        public async Task<int> Create(ProductCondition param)
-        {
-            string str = @"INSERT INTO Product (ProductName, Price, Description,Stock,Rate,EnableTag) VALUES ( @ProductName, @Price, @Description,@Stock,0,'Active')
-                           SELECT CAST(SCOPE_IDENTITY() AS INT); ";
-            int productId = await _dbConnection.ExecuteScalarAsync<int>(str, param);
-            return productId;
-        }
-
-        public async Task<bool> Delete(int id)
-        {
-            string str = @"Update Product SET IsDeleted='Y' WHERE ProductId=@ProductId";
-            var param = new DynamicParameters();
-            param.Add("ProductId", id, System.Data.DbType.Int32);
-            await _dbConnection.ExecuteAsync(str, param);
-            return true;
-        }
-
-        public async Task DeleteProductImage(int productId, List<string> images)
-        {
-            if(_dbConnection.State != ConnectionState.Open)
-            {
-                _dbConnection.Open();
-            }           
-            using var transaction = _dbConnection.BeginTransaction();
-            try
-            {
-                string delete = @" DELETE FROM ProductImage WHERE ProductId = @ProductId AND Path = @Path ";
-                foreach(var image in images)
-                {
-                    var param = new DynamicParameters();
-                    param.Add("@ProdcutId", productId);
-                    param.Add("@Path", $"product-image/{productId}/{image}");
-                    await _dbConnection.ExecuteAsync(delete, param, transaction: transaction);
-                }
-                transaction.Commit();
-            }
-            catch (Exception)
-            {
-                transaction.Rollback();
-                throw;
-            }
-        }
-        public async Task<ProductResultModel?> GetProduct(int id)
+        public async Task<ProductResultModel?> GetProduct(IDbConnection conn, int id)
         {
             string str = @"SELECT * FROM Product WHERE ProductId = @ProductId";
             var param = new DynamicParameters();
             param.Add("ProductId", id, System.Data.DbType.Int32);
-            var product = await _dbConnection.QueryFirstOrDefaultAsync<ProductResultModel?>(str, param);
-
-            // 檢查 product 是否為 null，如果是，返回 null
-            //Dapper QueryFirstOrDefaultAsync 如果找不到返回值是預設值，這個案例就是 ProductDataModel ，如果要返回null就可以用下面這個方式。
-            if (product?.Equals(default(ProductResultModel)) ?? true)
-            {
-                return null;
-            }
-
+            var product = await conn.QueryFirstOrDefaultAsync<ProductResultModel?>(str, param);
             return product;
         }
-
-        public async Task<IEnumerable<ProductResultModel>> GetProductList()
+        public async Task<IEnumerable<ProductResultModel>> GetProductList(IDbConnection conn)
         {
             string str = @" SELECT 
                                 Main.ProductId,
@@ -95,9 +42,10 @@ namespace BackendSystem.Respository.Implement
                                     FROM ProductImage 
                                     WHERE ProductImage.ProductId = Main.ProductId
                                 ), '') AS ProductImage
-                            FROM Product Main ";
+                            FROM Product Main "
+            ;
 
-            var products = await _dbConnection.QueryAsync<ProductResultModel>(str);
+            var products = await conn.QueryAsync<ProductResultModel>(str);
 
             foreach (var product in products)
             {
@@ -107,27 +55,47 @@ namespace BackendSystem.Respository.Implement
 
             return products;
         }
+        public async Task<int> CreateProduct(IDbConnection conn, IDbTransaction tx, ProductCommandModel param)
+        {
+            string str = @"INSERT INTO Product (ProductName, Price, Description,Stock,Rate,EnableTag) VALUES ( @ProductName, @Price, @Description,@Stock,0,'Active')
+                           SELECT CAST(SCOPE_IDENTITY() AS INT); ";
+            int productId = await conn.ExecuteScalarAsync<int>(str, param, tx);
+            return productId;
+        }
+        public async Task<bool> SoftDeleteProduct(IDbConnection conn, IDbTransaction tx, int id)
+        {
 
-        public async Task<int?> GetProductStock(int prodcutId)
+            string str = @"UPDATE Product SET IsDeleted = 1 WHERE ProductId = @ProductId";
+            var param = new DynamicParameters();
+            param.Add("ProductId", id, System.Data.DbType.Int32);
+            await conn.ExecuteAsync(str, param, tx);
+            return true;
+        }
+        public async Task<bool> DeleteProductImage(IDbConnection conn, IDbTransaction tx, int productId, List<string> images)
+        {
+
+            string delete = @" DELETE FROM ProductImage WHERE ProductId = @ProductId AND Path = @Path ";
+            foreach (var image in images)
+            {
+                var param = new DynamicParameters();
+                param.Add("@ProdcutId", productId);
+                param.Add("@Path", $"product-image/{productId}/{image}");
+                await conn.ExecuteAsync(delete, param, tx);
+            }
+            return true;
+        }
+        public async Task<int> GetProductStock(IDbConnection conn, int prodcutId)
         {
             string str = @"SELECT Stock FROM Product WHERE ProductId=@ProductId";
             var parm = new DynamicParameters();
             parm.Add("@ProductId", prodcutId, DbType.Int32);
-            return await _dbConnection.QueryFirstOrDefaultAsync<int?>(str, parm);
+            return await conn.QueryFirstOrDefaultAsync<int>(str, parm);
         }
-
-        public async Task<bool> UpdateProduct(ProductCondition product)
+        public async Task<bool> UpdateProductBasicInfo(IDbConnection conn, IDbTransaction tx, ProductCommandModel product)
         {
-            if (_dbConnection.State != ConnectionState.Open)
-            {
-                _dbConnection.Open();
-            }
-            using var transaction = _dbConnection.BeginTransaction();
-            string user = "Mike.Chen@gmail.com";
-            try
-            {
-                // 1. 更新 Product 主表
-                string updateSql = @"
+
+            // 1. 更新 Product 主表
+            string updateSql = @"
                 UPDATE Product
                 SET ProductName = @ProductName,
                     Price = @Price,
@@ -135,122 +103,109 @@ namespace BackendSystem.Respository.Implement
                     Stock = @Stock
                 WHERE ProductId = @ProductId";
 
-                var productParams = new DynamicParameters();
-                productParams.Add("@ProductId", product.ProductId, DbType.Int32);
-                productParams.Add("@ProductName", product.ProductName, DbType.String);
-                productParams.Add("@Price", product.Price, DbType.Int32);
-                productParams.Add("@Description", product.Description, DbType.String);
-                productParams.Add("@Stock", product.Stock, DbType.Int32);
+            var productParams = new DynamicParameters();
+            productParams.Add("@ProductId", product.ProductId, DbType.Int32);
+            productParams.Add("@ProductName", product.ProductName, DbType.String);
+            productParams.Add("@Price", product.Price, DbType.Int32);
+            productParams.Add("@Description", product.Description, DbType.String);
+            productParams.Add("@Stock", product.Stock, DbType.Int32);
 
-                await _dbConnection.ExecuteAsync(updateSql, productParams, transaction: transaction);
-
-                // 2. 更新 Product 與 Category 的關聯（多對多表）
-                if (product.Category?.Count > 0)
-                {
-                    // 2-1. 先刪除舊資料
-                    string deleteSql = @"DELETE FROM ProductMappingCategory WHERE ProductId = @ProductId";
-                    await _dbConnection.ExecuteAsync(deleteSql, productParams, transaction: transaction);
-
-                    // 2-2. 再新增新資料
-                    string insertSql = @"
-                    INSERT INTO ProductMappingCategory
-                        (ProductId, CategoryId, UpdateTime, UpdateBy, CreateTime, CreateBy)
-                    VALUES
-                        (@ProductId, @CategoryId, GETDATE(), @User, GETDATE(), @User)";
-
-                    foreach (var categoryId in product.Category)
-                    {
-                        var insertParams = new DynamicParameters();
-                        insertParams.Add("@ProductId", product.ProductId);
-                        insertParams.Add("@CategoryId", categoryId);
-                        insertParams.Add("@User", user);
-
-                        await _dbConnection.ExecuteAsync(insertSql, insertParams, transaction: transaction);
-                    }
-                }
-
-                // 3. 成功就提交
-                transaction.Commit();
-                return true;
-            }
-            catch (Exception)
-            {
-                transaction.Rollback();
-                throw;
-            }
+            await conn.ExecuteAsync(updateSql, productParams, tx);
+            return true;
         }
-
-        public async Task<bool> RemoveProductStock(int quantity, int productId)
+        public async Task<bool> UpdateProductCategories(IDbConnection conn, IDbTransaction tx, int productId, List<int>? categoryIds, string updatedBy)
         {
-            string sql = @"UPDATE Product
+            // 沒有要更新就不動作
+            if (categoryIds == null)
+                return true;
+
+            // 先刪除所有舊的資料
+            const string deleteSql = @"DELETE FROM ProductMappingCategory WHERE ProductId = @ProductId";
+            await conn.ExecuteAsync(deleteSql, new { ProductId = productId }, tx);
+
+            // 如果是空清單清空完就結束
+            if (categoryIds.Count == 0)
+                return true;
+
+            const string insertSql = @"
+            INSERT INTO ProductMappingCategory
+                (ProductId, CategoryId, UpdateTime, UpdateBy, CreateTime, CreateBy)
+            VALUES
+            (@ProductId, @CategoryId, GETDATE(), @User, GETDATE(), @User)";
+
+            foreach (var categoryId in categoryIds)
+            {
+                var insertParams = new DynamicParameters();
+                insertParams.Add("@ProductId", productId);
+                insertParams.Add("@CategoryId", categoryId);
+                insertParams.Add("@User", updatedBy);
+
+                await conn.ExecuteAsync(insertSql, insertParams, tx);
+            }
+
+            return true;
+        }
+        public async Task<bool> RemoveProductStock(IDbConnection conn, IDbTransaction tx, int quantity, int productId)
+        {
+            const string sql = @"UPDATE Product
                            SET Stock = Stock - @Quantity,
                                UpdateDate = GETDATE()
                            WHERE ProductId = @ProductId; ";
-
             var parameters = new DynamicParameters();
             parameters.Add("@ProductId", productId, DbType.Int32);
             parameters.Add("@Quantity", quantity, DbType.Int32);
-
-            try
-            {
-                await _dbConnection.ExecuteAsync(sql, parameters);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                return false;
-            }
+            await conn.ExecuteAsync(sql, parameters,tx);
+            return true;
         }
-
-        public async Task<bool> UpdateProdcutStatus(int productid, string status)
+        public async Task<bool> UpdateProdcutStatus(IDbConnection conn, IDbTransaction tx, int productid, string status)
         {
-            using (var transaction = _dbConnection.BeginTransaction())
-            {
-                try
-                {
-                    var str = @"Update Product SET EnableTag=@Status,UpdateDate=GETDATE() Where ProductId = @ProductId";
-                    var parameters = new DynamicParameters();
-                    parameters.Add("@ProductId", productid, DbType.Int32);
-                    parameters.Add("@Status", status, DbType.String);
-                    await _dbConnection.ExecuteAsync(str, parameters, transaction);
-                    transaction.Commit();
-                    return true;
-                }
-                catch (Exception)
-                {
-                    transaction.Rollback();
-                    throw;
-                }
-            }
+            const string str = @"Update Product SET EnableTag=@Status,UpdateDate=GETDATE() Where ProductId = @ProductId";
+            var parameters = new DynamicParameters();
+            parameters.Add("@ProductId", productid, DbType.Int32);
+            parameters.Add("@Status", status, DbType.String);
+            await conn.ExecuteAsync(str, parameters, tx);
+            return true;
         }
+        public async Task<int> AddProductCategories(IDbConnection conn, IDbTransaction tx, int productId, List<int> categoryIds, string current)
+        {
+            if (categoryIds == null || categoryIds.Count == 0)
+                return 0;
 
-        public async Task<IEnumerable<ProductCategoryResultModel>> GetProductCategory()
+            const string sql = @"
+            INSERT INTO ProductMappingCategory
+                (ProductId, CategoryId, CreateTime, CreateBy, UpdateTime, UpdateBy)
+            VALUES
+            (@ProductId, @CategoryId, GETDATE(), @Admin, GETDATE(), @Admin)";
+
+            int total = 0;
+            foreach (var categoryId in categoryIds)
+            {
+                var parameters = new DynamicParameters();
+                parameters.Add("@ProductId", productId);
+                parameters.Add("@CategoryId", categoryId);
+                parameters.Add("@Admin", current);
+
+                total += await conn.ExecuteAsync(sql, parameters, tx);
+            }
+
+            return total;
+        }
+        public async Task<IEnumerable<ProductCategoryResultModel>> GetProductCategories(IDbConnection conn)
         {
             var str = @"SELECT * FROM Category";
-            var res = await _dbConnection.QueryAsync<ProductCategoryResultModel>(str);
+            var res = await conn.QueryAsync<ProductCategoryResultModel>(str);
             return res;
         }
-
-        public async Task InsertProductImage(ProductImageResultModel image)
+        public async Task<int> InsertProductImage(IDbConnection conn, IDbTransaction tx, ProductImageResultModel image)
         {
             string str = @"INSERT INTO ProductImage(ProductId, Name, Path, CreateTime)
                    VALUES(@ProductId, @Name, @Path, GETDATE())";
-            await _dbConnection.ExecuteAsync(str, image);
+            var res = await conn.ExecuteAsync(str, image,tx);
+            return res;
         }
-        //自定義 處理 Dapper 字串陣列
         private List<string> ConvertStringToList(string? value)
         {
             return string.IsNullOrEmpty(value) ? new List<string>() : value.Split(',').ToList();
-        }
-
-        public async Task AddCategory(List<int> param)
-        {
-            string str = @"INSER INTO ProductMappingCategory(ProductId , CategoryId , CreateTime, CreateBy, UpdateTime , UpdateBy)
-                            VALUES (@ProductId , @CategoryId,GETDATE(),@Admin ,GETDATE(),@Admin)";
-            foreach (var item in param)
-            {
-                await _dbConnection.ExecuteAsync(str, item);
-            }
         }
 
     }
