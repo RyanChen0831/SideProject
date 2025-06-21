@@ -1,13 +1,14 @@
 ﻿using BackendSystem.Respository.CommandModels;
 using BackendSystem.Respository.ResultModels;
+using System.Data;
 
 namespace BackendSystem.Respository.Interface
 {
     public interface IOrderRespository
     {
-        public Task<IEnumerable<OrderResultModel>> GetOrder(int memberId);
-        public Task<bool> CreateOrder(OrderCommandModel order);
-        public Task<bool> CreateOrderDetail(OrderDetailCommandModel orderDetail);
-        public Task<bool> UpdateOrderStatus(OrderDetailCommandModel orderCondition);
+        public Task<IEnumerable<OrderResultModel>> GetOrder(IDbConnection conn,int memberId);
+        public Task<bool> CreateOrder(IDbConnection conn,IDbTransaction tx, OrderCommandModel command);
+        public Task<bool> CreateOrderDetail(IDbConnection conn, IDbTransaction tx, OrderDetailCommandModel command);
+        public Task<bool> UpdateOrderStatus(IDbConnection conn, IDbTransaction tx, OrderStatusCommandModel command);
     }
 }
