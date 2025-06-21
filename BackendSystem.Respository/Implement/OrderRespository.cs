@@ -1,6 +1,6 @@
-﻿using BackendSystem.Respository.Dtos;
+﻿using BackendSystem.Respository.CommandModels;
 using BackendSystem.Respository.Interface;
-using BackendSystem.Respository.ResultModel;
+using BackendSystem.Respository.ResultModels;
 using Dapper;
 using System.Data;
 
@@ -14,28 +14,6 @@ namespace BackendSystem.Respository.Implement
             _dbConnection = dbConnection;
         }
 
-        //管理者查看所有的OrderList，返回OrderDataModel
-        public async Task<IEnumerable<OrderDataModel>> GetOrderList()
-        {
-            var orderList = new List<OrderDataModel>();
-            var str = @"SELECT O.OrderId,OD.ProductId,OD.Quantity,OD.UnitPrice,OD.SubTotal,O.ShippingAddress,O.Payment,O.PaymentStatus ,O.OrderDate
-	                        FROM [Orders] O
-                        INNER JOIN [OrderDetial] OD ON O.OrderId = OD.OrderId";
-            var data = await _dbConnection.QueryAsync<OrderDataModel>(str);
-            return data.Select(item => new OrderDataModel
-            {
-                OrderId = item.OrderId,
-                ProductId = item.ProductId,
-                Quantity = item.Quantity,
-                UnitPrice = item.UnitPrice,
-                SubTotal = item.SubTotal,
-                ShippingAddress = item.ShippingAddress,
-                Payment = item.Payment,
-                PaymentStatus = item.PaymentStatus,
-                OrderDate = item.OrderDate
-            });
-
-        }
         public async Task<IEnumerable<OrderResultModel>> GetOrder(int memberId)
         {
             Dictionary<string, OrderResultModel> orderDict = new Dictionary<string, OrderResultModel>();
@@ -67,7 +45,7 @@ namespace BackendSystem.Respository.Implement
         }
 
         //更改訂單狀態，資料格式OrderCondition
-        public async Task<bool> UpdateOrderStatus(OrderStatusCondition orderCondition)
+        public async Task<bool> UpdateOrderStatus(OrderDetailCommandModel orderCondition)
         {
             try
             {
@@ -91,7 +69,7 @@ namespace BackendSystem.Respository.Implement
         /// </summary>
         /// <param name="order"></param>
         /// <returns>bool</returns>
-        public async Task<bool> CreateOrder(OrderCondition order)
+        public async Task<bool> CreateOrder(OrderCommandModel order)
         {
             try
             {
@@ -118,7 +96,7 @@ namespace BackendSystem.Respository.Implement
         /// </summary>
         /// <param name="orderDetail"></param>
         /// <returns>bool</returns>
-        public async Task<bool> CreateOrderDetail(OrderDetailCondition orderDetail)
+        public async Task<bool> CreateOrderDetail(OrderDetailCommandModel orderDetail)
         {
             try
             {
@@ -139,7 +117,6 @@ namespace BackendSystem.Respository.Implement
             }
 
         }
-
 
     }
 }
