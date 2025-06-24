@@ -1,20 +1,18 @@
 ﻿
 using BackendSystem.Respository.CommandModels;
 using BackendSystem.Respository.Interface;
-using System.Data;
 using Dapper;
-using BackendSystem.Respository.ResultModel;
+using BackendSystem.Respository.ResultModels;
+using System.Data;
 
 namespace BackendSystem.Respository.Implement
 {
     public class MemberManagementRespository : IMemberManagementRespository
     {
-        private readonly IDbConnection _dbConnection;
-        public MemberManagementRespository(IDbConnection dbConnection)
+        public MemberManagementRespository()
         {
-            _dbConnection = dbConnection;
         }
-        public async Task<IEnumerable<MemberManagementResultModel>> GetAllMember()
+        public async Task<IEnumerable<MemberManagementResultModel>> GetAllMember(IDbConnection conn)
         {
             string sql = @"
                         SELECT 
@@ -34,33 +32,15 @@ namespace BackendSystem.Respository.Implement
                         LEFT JOIN MemberLevel Lev ON Lev.LevelId = Main.LevelId
                         WHERE IsDeleted = 0";
 
-            var members = await _dbConnection.QueryAsync<MemberManagementResultModel>(sql);
+            var members = await conn.QueryAsync<MemberManagementResultModel>(sql);
             return members;
         }
-        public async Task<int> DeleteMember(MemberManagementCommandModel member)
+        public async Task<int> DeleteMember(IDbConnection conn,IDbTransaction tx, MemberManagementCommandModel member)
         {
             string sql = @"UPDATE Member SET IsDeleted = 1 WHERE MemberId = @MemberId AND IsDeleted = 0";
-
-            using var conn = _dbConnection;
-            if (conn.State != ConnectionState.Open)
-                conn.Open();
-
-            using var tran = conn.BeginTransaction();
-
-            int row;
-            try
-            {
-                row = await conn.ExecuteAsync(sql, new { member.MemberId }, tran);
-                tran.Commit();
-            }
-            catch
-            {
-                tran.Rollback();
-                throw;
-            }
-            return row;
+            return await conn.ExecuteAsync(sql, new { member.MemberId }, tx);
         }
-        public async Task<int> UpdateMember(MemberManagementCommandModel member)
+        public async Task<int> UpdateMember(IDbConnection conn, IDbTransaction tx, MemberManagementCommandModel member)
         {
             string sql = @"
             UPDATE Member
@@ -84,46 +64,12 @@ namespace BackendSystem.Respository.Implement
                 OR ISNULL(Address, '')  != ISNULL(@Address, '')
                 OR ISNULL(Mail, '')     != ISNULL(@Mail, '')
               )";
-
-            using var conn = _dbConnection;
-            if (conn.State != ConnectionState.Open)
-                conn.Open();
-
-            using var tran = conn.BeginTransaction();
-
-            try
-            {
-                int row = await conn.ExecuteAsync(sql, member, tran);
-                tran.Commit();
-                return row;
-            }
-            catch
-            {
-                tran.Rollback();
-                throw;
-            }
+             return await conn.ExecuteAsync(sql, member, tx);
         }
-        public async Task<int> UpdateMemberVerificationStatus(int memberId)
+        public async Task<int> UpdateMemberVerificationStatus(IDbConnection conn, IDbTransaction tx, int memberId)
         {
             string sql = @"Update Member SET IsVerifyEmail = 'Y' Where MembereId = @MembereId AND ISNULL(IsVerifyEmail,'') = 'N' ";
-            using var conn = _dbConnection;
-            int row;
-            if (conn.State != ConnectionState.Open)
-            {
-                conn.Open();
-            }
-            using var tran = conn.BeginTransaction();
-            try
-            {
-                row = await _dbConnection.ExecuteAsync(sql, memberId , tran);
-                tran.Commit();
-            }
-            catch (Exception)
-            {
-                tran.Rollback();
-                throw;
-            }
-            return row;
+            return await conn.ExecuteAsync(sql, memberId, tx);
         }
     }
 }
