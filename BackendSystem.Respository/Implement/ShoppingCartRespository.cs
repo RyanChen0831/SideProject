@@ -1,38 +1,25 @@
 ﻿using BackendSystem.Respository.Interface;
-using BackendSystem.Respository.ResultModel;
+using BackendSystem.Respository.ResultModels;
 using Newtonsoft.Json;
 using StackExchange.Redis;
 using System.Data;
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 
 namespace BackendSystem.Respository.Implement
 {
     public class ShoppingCartRespository : IShoppingCartRespository
     {
-        private readonly ConnectionMultiplexer _redis;
-        private readonly IDbConnection _dbConnection;
         private readonly IDatabase _database;
-        public ShoppingCartRespository(IDbConnection dbConnection, ConnectionMultiplexer redis)
+        public ShoppingCartRespository(ConnectionMultiplexer redis)
         {
-            _redis = redis;
-            _dbConnection = dbConnection;
-            _database = _redis.GetDatabase();
+            _database = redis.GetDatabase();
         }
-        /// <summary>
-        /// 加入購物車，如果商品已存在購物車則修改數量即可。
-        /// </summary>
-        /// <param name="memberId"></param>
-        /// <param name="productId"></param>
-        /// <param name="quantity"></param>
-        /// <returns></returns>  
+
         public async Task AddItemToCartAsync(int memberId, ShoppingCartResultModel cart)
         {
-            var db = _redis.GetDatabase();
             var cartKey = $"cart:{memberId}";
             var productId = cart.ProductId;
 
-            var existingItem = await db.HashGetAsync(cartKey, productId);
+            var existingItem = await _database.HashGetAsync(cartKey, productId);
             if (existingItem.HasValue)
             {
                 var currentItem = JsonConvert.DeserializeObject<ShoppingCartResultModel>(existingItem);
@@ -49,13 +36,12 @@ namespace BackendSystem.Respository.Implement
 
         public async Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartResultModel> cart)
         {
-            var db = _redis.GetDatabase();
             var cartKey = $"cart:{memberId}";
             foreach (var item in cart)
             {
                 var currentItem = JsonConvert.SerializeObject(item);
                 var productId = item.ProductId;
-                await db.HashSetAsync(cartKey, productId, currentItem);
+                await _database.HashSetAsync(cartKey, productId, currentItem);
             }
             return true;
         }
@@ -63,20 +49,13 @@ namespace BackendSystem.Respository.Implement
 
         public async Task<int?> GetCartItemQuantityAsync(int memberId, int productId)
         {
-            var db = _redis.GetDatabase();
-            var value = await db.HashGetAsync($"cart:{memberId}", productId);
+            var value = await _database.HashGetAsync($"cart:{memberId}", productId);
             return (int?)value;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="memberId"></param>
-        /// <returns></returns>
         public async Task<List<ShoppingCartResultModel>> GetCartItemAsync(int memberId)
         {
-            var db = _redis.GetDatabase();
-            var cartItems = await db.HashGetAllAsync($"cart:{memberId}");
+            var cartItems = await _database.HashGetAllAsync($"cart:{memberId}");
             var productlist = new List<ShoppingCartResultModel>();
 
             foreach (var item in cartItems)
@@ -97,14 +76,12 @@ namespace BackendSystem.Respository.Implement
 
         public async Task RemoveItemFromCartAsync(int memberId, int productId)
         {
-            var db = _redis.GetDatabase();
-            await db.HashDeleteAsync($"cart:{memberId}", productId);
+            await _database.HashDeleteAsync($"cart:{memberId}", productId);
         }
 
         public async Task ClearCartAsync(int memberId)
         {
-            var db = _redis.GetDatabase();
-            await db.KeyDeleteAsync($"cart:{memberId}");
+            await _database.KeyDeleteAsync($"cart:{memberId}");
         }
     }
 }
