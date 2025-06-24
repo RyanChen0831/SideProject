@@ -50,7 +50,9 @@ namespace BackendSystem.Respository.Implement
         public async Task<int?> GetCartItemQuantityAsync(int memberId, int productId)
         {
             var value = await _database.HashGetAsync($"cart:{memberId}", productId);
-            return (int?)value;
+            if (value.HasValue && int.TryParse(value.ToString(), out int quantity))
+                return quantity;
+            return null;
         }
 
         public async Task<List<ShoppingCartResultModel>> GetCartItemAsync(int memberId)
