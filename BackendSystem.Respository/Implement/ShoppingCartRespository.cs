@@ -1,9 +1,7 @@
-﻿using AutoMapper.Execution;
-using BackendSystem.Respository.Interface;
+﻿using BackendSystem.Respository.Interface;
 using BackendSystem.Respository.ResultModels;
 using Newtonsoft.Json;
 using StackExchange.Redis;
-using System.Data;
 
 namespace BackendSystem.Respository.Implement
 {
@@ -24,11 +22,11 @@ namespace BackendSystem.Respository.Implement
 
         public async Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartResultModel> cart)
         {
-            var cartKey = $"cart:{memberId}";
             foreach (var item in cart)
             {
                 var currentItem = JsonConvert.SerializeObject(item);
                 var productId = item.ProductId;
+                string cartKey = GetRedisKey(memberId);
                 await _database.HashSetAsync(cartKey, productId, currentItem);
             }
             return true;
@@ -45,7 +43,8 @@ namespace BackendSystem.Respository.Implement
 
         public async Task<List<ShoppingCartResultModel>> GetCartItemAsync(int memberId)
         {
-            var cartItems = await _database.HashGetAllAsync($"cart:{memberId}");
+            string cartKey = GetRedisKey(memberId);
+            var cartItems = await _database.HashGetAllAsync(cartKey);
             var productlist = new List<ShoppingCartResultModel>();
 
             foreach (var item in cartItems)
@@ -66,12 +65,14 @@ namespace BackendSystem.Respository.Implement
 
         public async Task RemoveItemFromCartAsync(int memberId, int productId)
         {
-            await _database.HashDeleteAsync(GetRedisKey(memberId), productId);
+            string cartKey = GetRedisKey(memberId);
+            await _database.HashDeleteAsync(cartKey, productId);
         }
 
         public async Task ClearCartAsync(int memberId)
         {
-            await _database.KeyDeleteAsync(GetRedisKey(memberId));
+            string cartKey = GetRedisKey(memberId);
+            await _database.KeyDeleteAsync(cartKey);
         }
 
         private const string RedisCartKeyPattern = "cart:{0}";
