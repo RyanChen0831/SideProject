@@ -17,22 +17,9 @@ namespace BackendSystem.Respository.Implement
 
         public async Task AddItemToCartAsync(int memberId, ShoppingCartResultModel cart)
         {
-            var cartKey = $"cart:{memberId}";
-            var productId = cart.ProductId;
-
-            var existingItem = await _database.HashGetAsync(cartKey, productId);
-            if (existingItem.HasValue)
-            {
-                var currentItem = JsonConvert.DeserializeObject<ShoppingCartResultModel>(existingItem);
-                currentItem.Quantity += cart.Quantity;
-                currentItem.SubTotal = currentItem.Quantity * currentItem.Price;
-
-                await db.HashSetAsync(cartKey, productId, JsonConvert.SerializeObject(currentItem));
-            }
-            else
-            {
-                await db.HashSetAsync(cartKey, productId, JsonConvert.SerializeObject(cart));
-            }
+            string cartKey = GetRedisKey(memberId);
+            int productId = cart.ProductId;
+            await _database.HashSetAsync(cartKey, productId, JsonConvert.SerializeObject(cart));
         }
 
         public async Task<bool> UpdateCartItemAsync(int memberId, List<ShoppingCartResultModel> cart)
