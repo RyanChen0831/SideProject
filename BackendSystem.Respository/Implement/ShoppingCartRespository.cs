@@ -1,4 +1,5 @@
-﻿using BackendSystem.Respository.Interface;
+﻿using AutoMapper.Execution;
+using BackendSystem.Respository.Interface;
 using BackendSystem.Respository.ResultModels;
 using Newtonsoft.Json;
 using StackExchange.Redis;
@@ -78,12 +79,15 @@ namespace BackendSystem.Respository.Implement
 
         public async Task RemoveItemFromCartAsync(int memberId, int productId)
         {
-            await _database.HashDeleteAsync($"cart:{memberId}", productId);
+            await _database.HashDeleteAsync(GetRedisKey(memberId), productId);
         }
 
         public async Task ClearCartAsync(int memberId)
         {
-            await _database.KeyDeleteAsync($"cart:{memberId}");
+            await _database.KeyDeleteAsync(GetRedisKey(memberId));
         }
+
+        private const string RedisCartKeyPattern = "cart:{0}";
+        private string GetRedisKey(int memberId) => string.Format(RedisCartKeyPattern, memberId);
     }
 }
