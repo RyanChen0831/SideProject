@@ -1,4 +1,4 @@
-﻿using BackendSystem.Respository.ResultModel;
+﻿using BackendSystem.Respository.ResultModels;
 
 namespace BackendSystem.Respository.Interface
 {
