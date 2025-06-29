@@ -1,5 +1,6 @@
 
 using Amazon.S3;
+using BackendSystem.Respository.Factory;
 using BackendSystem.Respository.Implement;
 using BackendSystem.Respository.Interface;
 using BackendSystem.Service.Implement;
@@ -49,9 +50,9 @@ namespace BackendSystem
                 }
                 );
             });
-            // 注入 Dapper 服務
+            // 注入 連線工廠 服務
             var connectionString = builder.Configuration.GetConnectionString("DesertShopDbContext");
-            builder.Services.AddScoped<IDbConnection>(conn => new SqlConnection(connectionString));
+            builder.Services.AddSingleton<IDbConnectionFactory>(provider => new DbConnectionFactory(connectionString));
             // 注入 AutoMapper 服務
             builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
             //注入Service
