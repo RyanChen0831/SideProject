@@ -1,5 +1,7 @@
 
 using Amazon.S3;
+using BackendSystem.Common.Model;
+using BackendSystem.Common.Interface;
 using BackendSystem.Respository.Factory;
 using BackendSystem.Respository.Implement;
 using BackendSystem.Respository.Interface;
@@ -8,11 +10,9 @@ using BackendSystem.Service.Interface;
 using BackendSystem.Service.Security;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Mvc.Authorization;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
-using System.Data;
-
+using BackendSystem.Common.Implement;
 
 namespace BackendSystem
 {
@@ -53,6 +53,10 @@ namespace BackendSystem
             // 注入 連線工廠 服務
             var connectionString = builder.Configuration.GetConnectionString("DesertShopDbContext");
             builder.Services.AddSingleton<IDbConnectionFactory>(provider => new DbConnectionFactory(connectionString));
+
+            builder.Services.AddSingleton<IJWTHelper, JWTHelper>();
+            builder.Services.Configure<TokenSettings>(builder.Configuration.GetSection("TokenSettings"));
+
             // 注入 AutoMapper 服務
             builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
             //注入Service
