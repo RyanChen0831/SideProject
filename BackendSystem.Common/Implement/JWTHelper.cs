@@ -53,13 +53,12 @@ namespace BackendSystem.Common.Implement
             return tokenHandler.WriteToken(token);
         }
 
-        public int? ValidateToken(string token)
+        public ValidateTokenResult? ValidateToken(string token)
         {
             if (token == null)
                 return null;
-
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_appSettings.Secret);
+            var key = Encoding.UTF8.GetBytes(_appSettings.Secret);
             try
             {
                 tokenHandler.ValidateToken(token, new TokenValidationParameters
@@ -70,10 +69,33 @@ namespace BackendSystem.Common.Implement
                     ValidateAudience = false,
                     ClockSkew = TimeSpan.Zero
                 }, out SecurityToken validatedToken);
-
+                
                 var jwtToken = (JwtSecurityToken)validatedToken;
-                var userId = int.Parse(jwtToken.Claims.First(x => x.Type == "id").Value);
-                return userId;
+
+                var userIdClaim = jwtToken.Claims.FirstOrDefault(t => t.Type == "userId")?.Value;
+                if(!int.TryParse(userIdClaim, out int userId))
+                {
+                    return null;
+                }
+                var email = jwtToken.Claims.FirstOrDefault(t => t.Type == "email")?.Value;
+                var role = jwtToken.Claims.FirstOrDefault(t => t.Type == "role")?.Value;
+                var type = jwtToken.Claims.FirstOrDefault(t => t.Type == "type")?.Value;
+                var purpose = jwtToken.Claims.FirstOrDefault(t => t.Type == "purpose")?.Value;
+                var expireTime = jwtToken.Claims.FirstOrDefault(t => t.Type == "exp")?.Value;
+                
+                if(email ==null || role==null || purpose == null)
+                {
+                    return null;
+                }
+
+                DateTime? expireAt = null;
+                if(long.TryParse(expireTime, out var unixTime))
+                {
+                    expireAt = DateTimeOffset.FromUnixTimeSeconds(unixTime).UtcDateTime;
+                }
+
+                return ValidateTokenResult.Success(userId, email, role, purpose, expireAt);
+
             }
             catch
             {
