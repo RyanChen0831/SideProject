@@ -8,35 +8,34 @@ namespace BackendSystem.Respository.Implement
 {
     public class MemberRespository : IMemberRespository
     {
-        public MemberRespository(IDbConnection dbConnection)
+        public MemberRespository()
         {
         }
-
-        public async Task<MemberDuplicationCheckResultModel> GetDuplicatedMemberInfo(IDbConnection conn, MemberDuplicationCheckResultModel member)
+        /// <summary>
+        /// 驗證帳號或密碼是否重複註冊
+        /// </summary>
+        /// <param name="conn"></param>
+        /// <param name="member"></param>
+        /// <returns></returns>
+        public async Task<bool> IsDuplicateAccountOrEmail(IDbConnection conn, string accountId, string mail)
         {
-            string str = @"SELECT Account,Phone,Mail
+            string str = @"SELECT COUNT(*)
                            FROM Member
-                           Where Account=@Account OR Phone=@Phone OR Mail=@Mail ";
-            var parm = new DynamicParameters();
-            parm.Add("Account", member.Account);
-            parm.Add("Phone", member.Phone);
-            parm.Add("Mail", member.Mail);
-
-            var result = await conn.QueryFirstOrDefaultAsync<MemberDuplicationCheckResultModel>(str, parm);
-            return result;
+                           Where (Account=@Account OR Mail=@Mail) AND IsDeleted=0 ";
+            var result = await conn.ExecuteScalarAsync<int>(str, new { Account = accountId, Mail = mail });
+            return result > 0;
         }
 
-        public async Task<MemberCommandModel> GetMember(IDbConnection conn, string account, string password)
+        public async Task<MemberCommandModel?> GetMemberByAccount(IDbConnection conn, string account)
         {
-            string sql = @" SELECT * FROM Member WHERE Account = @Account AND Password = @Password ";
+            string sql = @" SELECT * FROM Member WHERE Account = @Account AND IsVerifyEmail= 'Y' AND IsDeleted=0 ";
             var parm = new DynamicParameters();
             parm.Add("Account", account, DbType.String);
-            parm.Add("Password", password, DbType.String);
             var members = await conn.QueryFirstOrDefaultAsync<MemberCommandModel>(sql, parm);
             return members;
         }
 
-        public async Task<MemberProfileResultModel> GetMember(IDbConnection conn, int memberId)
+        public async Task<MemberProfileResultModel?> GetMember(IDbConnection conn, int memberId)
         {
             string sql = @" 
                         SELECT MB.Name,MB.Gender,CONVERT(VARCHAR, MB.Birthday, 23) AS Birthday,MB.Phone,MB.Address,MB.Mail,ML.LevelName AS Level, COALESCE(OD.TotalAmount, 0) AS TotalAmount
@@ -56,21 +55,16 @@ namespace BackendSystem.Respository.Implement
             return member;
         }
 
-        public async Task<bool> RegisterMember(IDbConnection conn, IDbTransaction tx, MemberCommandModel member)
+        public async Task<MemberCommandModel> CreateMember(IDbConnection conn, IDbTransaction tx, MemberCommandModel member)
         {
-            string sql = @"INSERT INTO Member (Name, Account, Password, Gender, Birthday, Phone, Address, Mail, Role,IsVerifyEmail) 
-                   VALUES (@Name, @Account, @Password, @Gender, @Birthday, @Phone, @Address, @Mail, @Role,'N')";
-            var parm = new DynamicParameters();
-            parm.AddDynamicParams(member);
-            try
-            {
-                await conn.ExecuteAsync(sql, parm, tx);
-                return true;
-            }
-            catch (Exception)
-            {
-                throw;
-            }
+            string sql = @"
+                INSERT INTO Member (Name, Account, Password, Gender, Birthday, Phone, Address, Mail, Role, IsVerifyEmail) 
+                VALUES (@Name, @Account, @Password, @Gender, @Birthday, @Phone, @Address, @Mail, 'User', 'N');
+                SELECT CAST(SCOPE_IDENTITY() as int);
+            ";
+            var newId = await conn.ExecuteScalarAsync<int>(sql, member, tx);
+            member.MemberId = newId;
+            return member;
         }
     }
 }
