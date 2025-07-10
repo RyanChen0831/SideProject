@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using BackendSystem.Common.Enum;
+using BackendSystem.Common.ResultModel;
 
 namespace BackendSystem.Common.Implement
 {
@@ -18,18 +20,35 @@ namespace BackendSystem.Common.Implement
             _appSettings = appSettings.CurrentValue;
         }
 
-        public string GenerateToken(User user)
+        public string GenerateToken(User user,TokenType type)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
             var key = Encoding.UTF8.GetBytes(_appSettings.Secret);
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(new[] {
-                        new Claim("id", user.Id.ToString())
+                        new Claim("userId", user.Id.ToString()),
+                        new Claim("email",user.Email),
+                        new Claim("role",user.Role),
+                        new Claim("type","access")
                     }),
                 Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
+            var claims = tokenDescriptor.Subject;
+            switch (type)
+            {
+                case TokenType.Login:
+                    claims.AddClaim(new Claim("purpose", "login"));
+                    break;
+                case TokenType.VerifyEmail:
+                    claims.AddClaim(new Claim("purpose", "verify_email"));
+                    break;
+                case TokenType.Refresh:
+                    claims.AddClaim(new Claim("purpose", "refresh_token"));
+                    break;
+            }
+
             var token = tokenHandler.CreateToken(tokenDescriptor);
             return tokenHandler.WriteToken(token);
         }
