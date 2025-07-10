@@ -13,6 +13,9 @@ using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using BackendSystem.Common.Implement;
+using BackendSystem.Service.QueryModels;
+using BackendSystem.Service.Validator;
+using FluentValidation;
 
 namespace BackendSystem
 {
@@ -50,15 +53,17 @@ namespace BackendSystem
                 }
                 );
             });
-            // 注入 連線工廠 服務
+            // Utility
             var connectionString = builder.Configuration.GetConnectionString("DesertShopDbContext");
             builder.Services.AddSingleton<IDbConnectionFactory>(provider => new DbConnectionFactory(connectionString));
-
             builder.Services.AddSingleton<IJWTHelper, JWTHelper>();
             builder.Services.Configure<TokenSettings>(builder.Configuration.GetSection("TokenSettings"));
+            builder.Services.AddScoped<IPasswordHasher, BCryptPasswordHasher>();
 
             // 注入 AutoMapper 服務
             builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+            //Validator
+            builder.Services.AddScoped<IValidator<MemberRegisterModel>, MemberRegisterValidator>();
             //注入Service
             builder.Services.AddScoped<IShoppingCartService, ShoppingCartService>();
             builder.Services.AddScoped<IShoppingCartRespository, ShoppingCartRespository>();
@@ -69,7 +74,6 @@ namespace BackendSystem
             builder.Services.AddScoped<IMemberRespository, MemberRespository>();
             builder.Services.AddScoped<IMemberService, MemberService>();
             builder.Services.AddScoped<IMailService, MailService>();
-            builder.Services.AddScoped<ITokenService, TokenManager>();
             builder.Services.AddScoped<IS3Service, S3Service>();
             builder.Services.AddHttpContextAccessor();
             //注入Cookie
