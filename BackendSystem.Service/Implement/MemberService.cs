@@ -1,156 +1,142 @@
 ﻿using AutoMapper;
-using BackendSystem.Respository.Dtos;
+using BackendSystem.Common.Dtos;
+using BackendSystem.Common.Interface;
+using BackendSystem.Respository.CommandModels;
 using BackendSystem.Respository.Interface;
-using BackendSystem.Respository.ResultModel;
 using BackendSystem.Service.Dtos;
 using BackendSystem.Service.Interface;
-using BackendSystem.Service.Security;
-using Microsoft.AspNetCore.Http;
-using Newtonsoft.Json;
-using System.Security.Claims;
+using BackendSystem.Service.QueryModels;
+using BackendSystem.Service.ResultModels;
+using FluentValidation;
+
 
 namespace BackendSystem.Service.Implement
 {
-    public class MemberService :IMemberService
+    public class MemberService : IMemberService
     {
         private readonly IMemberRespository _memberRespository;
+        private readonly IMemberManagementRespository _memberMangementRespository;
         private readonly IMapper _mapper;
         private readonly IMailService _mailService;
-        private readonly ITokenService _tokenManager;
-        private readonly IHttpContextAccessor _httpContextAccessor;
-        public MemberService(IMemberRespository memberRespository, IMapper mapper, IMailService mailService, ITokenService tokenService, IHttpContextAccessor httpContextAccessor)
+        private readonly IJWTHelper _jWTHelper;
+        private readonly IDbConnectionFactory _dbConnectionFactory;
+        private readonly IPasswordHasher _passwordHasher;
+        private readonly IValidator<MemberRegisterModel> _validator;
+        public MemberService(
+            IMemberRespository memberRespository,
+            IMapper mapper,
+            IMailService mailService,
+            IJWTHelper jWTHelper, 
+            IDbConnectionFactory connectionFactory, 
+            IMemberManagementRespository memberManagementRespository, 
+            IPasswordHasher passwordHasher, 
+            IValidator<MemberRegisterModel> validator)
         {
             _memberRespository = memberRespository;
             _mapper = mapper;
             _mailService = mailService;
-            _tokenManager = tokenService;
-            _httpContextAccessor = httpContextAccessor;
+            _jWTHelper = jWTHelper;
+            _dbConnectionFactory = connectionFactory;
+            _memberMangementRespository = memberManagementRespository;
+            _passwordHasher = passwordHasher;
+            _validator = validator;
         }
 
-        public async Task<bool> DeleteMember(MemberInfo member)
+        public async Task<MemberResultModel> ValidateLoginAsync(string account, string password)
         {
+            using var conn = _dbConnectionFactory.CreateConnection();
+            conn.Open();
+            var member = await _memberRespository.GetMemberByAccount(conn, account);
+            if (member == null || !_passwordHasher.Verify(password, member.PasswordHash))
+            {
+                throw new UnauthorizedAccessException("帳號或密碼錯誤錯誤");
+            }
+            return _mapper.Map<MemberResultModel>(member);
+        }
+
+        public async Task<OperationResultDTO<string>> RegisterMember(MemberRegisterModel member)
+        {
+            // 1. 驗證資料
+            var validation = await _validator.ValidateAsync(member);
+            if (!validation.IsValid)
+            {
+                var errorMsg = string.Join("；", validation.Errors.Select(e => e.ErrorMessage));
+                return new OperationResultDTO<string>(false, errorMsg);
+            }
+
+            using var conn = _dbConnectionFactory.CreateConnection();
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+
             try
             {
-                var parm = _mapper.Map<MemberInfo, MemberCondition>(member);
-                return await _memberRespository.DeleteMember(parm);
+
+                var command = _mapper.Map<MemberCommandModel>(member);
+
+                // 2. 密碼雜湊
+                command.PasswordHash = _passwordHasher.Hash(member.Password);
+
+                // 3. 新增會員
+                var user = await _memberRespository.CreateMember(conn, tx, command);
+
+                // 4. Commit 資料庫交易
+                tx.Commit();
+
+                // 5. 發送驗證信
+                await _mailService.SendRegisterEamil(member.Mail, member.Name, user.MemberId, user.Role);
+
+                return new OperationResultDTO<string>(true, "註冊成功，請完成信箱驗證，啟用帳號");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                return false;
+                tx.Rollback();
+                return new OperationResultDTO<string>(false, "註冊失敗，請稍後再試");
             }
         }
 
-        public async Task<IEnumerable<Dtos.MemberResultModel>> GetAllMember()
-        {
-            try
-            {
-                var list = await _memberRespository.GetAllMember();
-                return _mapper.Map<IEnumerable<MemberCondition>, IEnumerable<Dtos.MemberResultModel>> (list);
-            }
-            catch (Exception)
-            {
-                throw;
-            }
-        }
-
-        public async Task<Dtos.MemberResultModel> GetMember(string account, string password)
-        {
-            try
-            {
-                var member = await _memberRespository.GetMember(account, password);
-                return _mapper.Map<MemberCondition, Dtos.MemberResultModel>(member);
-            }
-            catch (Exception)
-            {
-                throw;
-            }
-        }
-
-        public async Task<OperationResultDTO<string>> RegisterMember(MemberInfo member)
-        {
-            try
-            {
-                var parm = _mapper.Map<MemberCondition>(member);
-                var checkResult = await _memberRespository.CheckRegistration(parm);
-                if (checkResult.IsSucceed)
-                {
-                    if (await _memberRespository.Register(parm))
-                    {
-                        var user = await _memberRespository.GetMember(member.Account, member.Password);
-                        await _mailService.SendRegisterEamil(member.Mail, member.Name, user.MemberId, user.Role);
-                    }
-                    return new OperationResultDTO<string>(true, string.Empty);
-                }
-                else
-                {
-                    return new OperationResultDTO<string>(false, checkResult.Message);
-                }
-            }
-            catch (Exception error)
-            {
-                return new OperationResultDTO<string>(false, $"註冊時發生錯誤: {error.Message}");
-            }
-        }
-
-        public Task<bool> UpdateMember(MemberInfo member)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<bool> UpdateMemberVerificationStatus(int memberId)
-        {            
-             return await _memberRespository.UpdateMemberVerificationStatus(memberId);
-        }
-        
         public async Task<OperationResultDTO<User>> VerifyEmail(string info)
         {
-
-            // 將解碼後的 JSON 字符串轉換為 Token 對象
-            var token = JsonConvert.DeserializeObject<Token>(info);
-
-            if (token == null)
+            //驗證Token
+            var user = _jWTHelper.ValidateToken(info);
+            if (user == null)
             {
-                throw new Exception("Invalid token format");
+                return new OperationResultDTO<User>(false, "Invalid token");
             }
-
-            // 解碼和驗證 Token
-            var (user, isValid) = _tokenManager.DecodeToken(token);
-
-            if (!isValid)
-            {
-                return new OperationResultDTO<User>(false, "驗證失敗");
-            }
-            var result = await UpdateMemberVerificationStatus(user!.Id);
-
-            return new OperationResultDTO<User>(result, user);
-        }
-
-        public int? GetMemberId()
-        {
-            // 從 HttpContext.User.Claims 中尋找使用者ID的 Claim
-            var userIdClaim = _httpContextAccessor.HttpContext.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
-
-            if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int memberId))
-            {
-                return memberId;
-            }
-
-            return null;
-        }
-
-        public async Task<MemberViewModel> GetMember(int memberId)
-        {
+            using var conn = _dbConnectionFactory.CreateConnection();
+            conn.Open();
+            using var tx = conn.BeginTransaction();
+            var response = _mapper.Map<User>(user);
             try
             {
-                var member = await _memberRespository.GetMember(memberId);
-                return _mapper.Map<Respository.ResultModel.MemberProfileResultModel, MemberViewModel>(member);
+                var result = await _memberMangementRespository.UpdateMemberVerificationStatus(conn, tx, response.Id) > 0;
+                tx.Commit();
+                return new OperationResultDTO<User>(result, response);
+            }
+            catch (Exception ex)
+            {
+                tx.Rollback();
+                return new OperationResultDTO<User>(false, "信件驗證失敗");
+                throw;
+            }
+
+        }
+
+        public async Task<MemberViewModel?> GetMember(int memberId)
+        {
+            using var conn = _dbConnectionFactory.CreateConnection();
+            conn.Open();
+            try
+            {
+                var result = await _memberRespository.GetMember(conn, memberId);
+                if (result == null) 
+                    return null;
+                return _mapper.Map<MemberViewModel>(result);
             }
             catch (Exception)
             {
-                throw;
+                throw new ApplicationException("取得會員資料時發生錯誤，請聯絡系統管理員。");
             }
         }
-
     }
 
 }
