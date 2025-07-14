@@ -8,10 +8,10 @@ namespace BackendSystem.Respository.Interface
     public interface IMemberRespository
     {
 
-        public Task<MemberCommandModel> GetMember(IDbConnection conn,string account, string password);
-        public Task<MemberProfileResultModel> GetMember(IDbConnection conn, int memberId);
-        public Task<bool> RegisterMember(IDbConnection conn, IDbTransaction tx, MemberCommandModel member);
-        public Task<MemberDuplicationCheckResultModel> GetDuplicatedMemberInfo(IDbConnection conn, MemberDuplicationCheckResultModel member);
+        public Task<MemberCommandModel?> GetMemberByAccount(IDbConnection conn,string account);
+        public Task<MemberProfileResultModel?> GetMember(IDbConnection conn, int memberId);
+        public Task<MemberCommandModel> CreateMember(IDbConnection conn, IDbTransaction tx, MemberCommandModel member);
+        public Task<bool> IsDuplicateAccountOrEmail(IDbConnection conn, string accountId, string mail);
 
 
     }

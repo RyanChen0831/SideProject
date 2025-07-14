@@ -35,10 +35,10 @@ namespace BackendSystem.Respository.Implement
             var members = await conn.QueryAsync<MemberManagementResultModel>(sql);
             return members;
         }
-        public async Task<int> DeleteMember(IDbConnection conn,IDbTransaction tx, MemberManagementCommandModel member)
+        public async Task<int> DeleteMember(IDbConnection conn,IDbTransaction tx,int memberId)
         {
             string sql = @"UPDATE Member SET IsDeleted = 1 WHERE MemberId = @MemberId AND IsDeleted = 0";
-            return await conn.ExecuteAsync(sql, new { member.MemberId }, tx);
+            return await conn.ExecuteAsync(sql, memberId, tx);
         }
         public async Task<int> UpdateMember(IDbConnection conn, IDbTransaction tx, MemberManagementCommandModel member)
         {
